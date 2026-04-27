@@ -1,0 +1,3 @@
+# Backend-local (see repo root .gitignore for shared rules)
+.venv
+venv

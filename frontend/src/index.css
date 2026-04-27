@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+body {
+  background: #0b1020;
+  color: #e6edf7;
+  font-family: Geist, Inter, 'DM Sans', system-ui, sans-serif;
+  line-height: 1.62;
+  margin: 0;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111b31; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+.mo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(2 6 23 / 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.mo-modal-panel {
+  background: #0f172a;
+  border: 1px solid #27324a;
+  color: #e6edf7;
+  box-shadow: 0 30px 70px rgb(0 0 0 / 0.55);
+}
+
+.mo-modal-close {
+  border: 1px solid #27324a;
+  color: #9fb0cc;
+  background: transparent;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.mo-modal-close:hover {
+  background: #111b31;
+  color: #e6edf7;
+  border-color: #334155;
+}
+
+@supports (view-transition-name: none) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.25s;
+    animation-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+  }
+}

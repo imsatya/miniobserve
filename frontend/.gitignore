@@ -1,0 +1,4 @@
+# Vite / local frontend (see repo root .gitignore for shared rules)
+dist
+dist-ssr
+*.local

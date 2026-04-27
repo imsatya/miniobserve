@@ -1,0 +1,23 @@
+# MiniObserve — production-style run (adjust env for Supabase vs SQLite).
+# Build: docker compose build
+# Run:   docker compose up -d
+# Env:  copy backend/.env.example → .env in repo root, or set variables in compose.
+
+services:
+  miniobserve:
+    build: .
+    ports:
+      - "7823:7823"
+    environment:
+      # SQLite: persist logs across restarts
+      MINIOBSERVE_DB: /data/logs.db
+      # Optional: production warning + API keys (see HOSTING.md)
+      # MINIOBSERVE_ENV: production
+      # MINIOBSERVE_API_KEYS: "sk-your-key:your-app"
+    volumes:
+      - miniobserve-data:/data
+    # env_file:
+    #   - ./backend/.env
+
+volumes:
+  miniobserve-data:

@@ -1,0 +1,178 @@
+{
+  "currency": "USD",
+  "unit": "per_1M_tokens",
+  "tier": "standard_api",
+  "as_of": "2026-03",
+  "notes": [
+    "Prices change; confirm at platform.openai.com/docs/pricing and docs.anthropic.com pricing.",
+    "OpenAI cached_input is prompt-cache read price (subset of input).",
+    "Anthropic cache_read is prompt-cache hit price (not the same as base input)."
+  ],
+  "openai": [
+    {
+      "id": "gpt-5.4",
+      "label": "GPT-5.4",
+      "input_usd_per_million": 2.5,
+      "cached_input_usd_per_million": 0.25,
+      "output_usd_per_million": 15
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "label": "GPT-5.4 Mini",
+      "input_usd_per_million": 0.75,
+      "cached_input_usd_per_million": 0.075,
+      "output_usd_per_million": 4.5
+    },
+    {
+      "id": "gpt-5.4-nano",
+      "label": "GPT-5.4 Nano",
+      "input_usd_per_million": 0.2,
+      "cached_input_usd_per_million": 0.02,
+      "output_usd_per_million": 1.25
+    },
+    {
+      "id": "gpt-5",
+      "label": "GPT-5",
+      "input_usd_per_million": 1.25,
+      "cached_input_usd_per_million": 0.125,
+      "output_usd_per_million": 10
+    },
+    {
+      "id": "gpt-5-mini",
+      "label": "GPT-5 Mini",
+      "input_usd_per_million": 0.25,
+      "cached_input_usd_per_million": 0.025,
+      "output_usd_per_million": 2
+    },
+    {
+      "id": "gpt-4.1",
+      "label": "GPT-4.1",
+      "input_usd_per_million": 2,
+      "cached_input_usd_per_million": 0.5,
+      "output_usd_per_million": 8
+    },
+    {
+      "id": "gpt-4.1-mini",
+      "label": "GPT-4.1 Mini",
+      "input_usd_per_million": 0.4,
+      "cached_input_usd_per_million": 0.1,
+      "output_usd_per_million": 1.6
+    },
+    {
+      "id": "gpt-4o",
+      "label": "GPT-4o",
+      "input_usd_per_million": 2.5,
+      "cached_input_usd_per_million": 1.25,
+      "output_usd_per_million": 10
+    },
+    {
+      "id": "gpt-4o-mini",
+      "label": "GPT-4o Mini",
+      "input_usd_per_million": 0.15,
+      "cached_input_usd_per_million": 0.075,
+      "output_usd_per_million": 0.6
+    },
+    {
+      "id": "o3",
+      "label": "o3",
+      "input_usd_per_million": 2,
+      "cached_input_usd_per_million": 0.5,
+      "output_usd_per_million": 8
+    },
+    {
+      "id": "o3-mini",
+      "label": "o3-mini",
+      "input_usd_per_million": 1.1,
+      "cached_input_usd_per_million": 0.55,
+      "output_usd_per_million": 4.4
+    },
+    {
+      "id": "o4-mini",
+      "label": "o4-mini",
+      "input_usd_per_million": 1.1,
+      "cached_input_usd_per_million": 0.275,
+      "output_usd_per_million": 4.4
+    },
+    {
+      "id": "gpt-3.5-turbo",
+      "label": "GPT-3.5 Turbo",
+      "input_usd_per_million": 0.5,
+      "cached_input_usd_per_million": null,
+      "output_usd_per_million": 1.5
+    }
+  ],
+  "anthropic": [
+    {
+      "id": "claude-opus-4-6",
+      "label": "Claude Opus 4.6",
+      "input_usd_per_million": 5,
+      "cache_write_5m_input_usd_per_million": 6.25,
+      "cache_write_1h_input_usd_per_million": 10,
+      "cache_read_input_usd_per_million": 0.5,
+      "output_usd_per_million": 25
+    },
+    {
+      "id": "claude-opus-4-5",
+      "label": "Claude Opus 4.5",
+      "input_usd_per_million": 5,
+      "cache_write_5m_input_usd_per_million": 6.25,
+      "cache_write_1h_input_usd_per_million": 10,
+      "cache_read_input_usd_per_million": 0.5,
+      "output_usd_per_million": 25
+    },
+    {
+      "id": "claude-opus-4-1",
+      "label": "Claude Opus 4.1",
+      "input_usd_per_million": 15,
+      "cache_write_5m_input_usd_per_million": 18.75,
+      "cache_write_1h_input_usd_per_million": 30,
+      "cache_read_input_usd_per_million": 1.5,
+      "output_usd_per_million": 75
+    },
+    {
+      "id": "claude-3-5-sonnet",
+      "label": "Claude 3.5 Sonnet",
+      "input_usd_per_million": 3,
+      "cache_write_5m_input_usd_per_million": 3.75,
+      "cache_write_1h_input_usd_per_million": 6,
+      "cache_read_input_usd_per_million": 0.3,
+      "output_usd_per_million": 15
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "label": "Claude Sonnet 4.6",
+      "input_usd_per_million": 3,
+      "cache_write_5m_input_usd_per_million": 3.75,
+      "cache_write_1h_input_usd_per_million": 6,
+      "cache_read_input_usd_per_million": 0.3,
+      "output_usd_per_million": 15
+    },
+    {
+      "id": "claude-sonnet-4-5",
+      "label": "Claude Sonnet 4.5",
+      "input_usd_per_million": 3,
+      "cache_write_5m_input_usd_per_million": 3.75,
+      "cache_write_1h_input_usd_per_million": 6,
+      "cache_read_input_usd_per_million": 0.3,
+      "output_usd_per_million": 15
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "label": "Claude Haiku 4.5",
+      "input_usd_per_million": 1,
+      "cache_write_5m_input_usd_per_million": 1.25,
+      "cache_write_1h_input_usd_per_million": 2,
+      "cache_read_input_usd_per_million": 0.1,
+      "output_usd_per_million": 5
+    },
+    {
+      "id": "claude-haiku-3-5",
+      "label": "Claude Haiku 3.5",
+      "input_usd_per_million": 0.8,
+      "cache_write_5m_input_usd_per_million": 1,
+      "cache_write_1h_input_usd_per_million": 1.6,
+      "cache_read_input_usd_per_million": 0.08,
+      "output_usd_per_million": 4
+    }
+  ]
+}
