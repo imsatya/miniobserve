@@ -231,7 +231,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
           </div>
         </div>
 
-        <table className="w-full text-xs font-mono">
+        <table className="w-full table-fixed text-xs font-mono">
           <thead>
             <tr className="text-muted border-b border-line">
               <th scope="col" className="py-2 px-2 font-normal text-center w-[6.25rem]">
@@ -323,6 +323,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                     <div className="mt-2 h-px bg-line/80" aria-hidden />
                                   </div>
                                 )}
+                                <div className="overflow-hidden">
                                 <div className="max-h-[min(60vh,560px)] overflow-y-auto">
                                 {activitySteps.map((s, vi) => {
                                   const origIdx = stepsOrdered.findIndex((x) => x.id === s.id)
@@ -407,6 +408,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                     </div>
                                   )
                                 })}
+                                </div>
                                 </div>
                               </div>
                             </div>

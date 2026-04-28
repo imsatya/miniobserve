@@ -205,7 +205,7 @@ function llmResponseSnippet(log) {
   const first = r.split('\n').map((l) => l.trim()).find(Boolean) || ''
   if (!first) return ''
   if (first.startsWith('{') && first.length > 200) return ''
-  return contentToSnippet(first, 52)
+  return contentToSnippet(first, 400)
 }
 
 function lastUserMessageSnippet(log) {
@@ -217,7 +217,7 @@ function lastUserMessageSnippet(log) {
   }
   const userMsgs = msgs.filter((m) => m && typeof m === 'object' && userLike(m.role))
   const pick = userMsgs.length ? userMsgs[userMsgs.length - 1] : null
-  return pick ? contentToSnippet(pick.content, 56) : ''
+  return pick ? contentToSnippet(pick.content, 400) : ''
 }
 
 /**
