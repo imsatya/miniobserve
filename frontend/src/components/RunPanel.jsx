@@ -379,7 +379,15 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                           <div className="text-[10px] text-muted font-mono truncate mt-0.5 pr-1" title={llmResponseSubtitleLine(s)}>
                                             {llmResponseSubtitleLine(s)}
                                           </div>
-                                        ) : null}
+                                        ) : !tcSum && s.span_type === 'tool' ? (() => {
+                                          const res = String(metadataObject(s).tool_result ?? s.response ?? '')
+                                          if (!res) return null
+                                          return (
+                                            <div className="text-[10px] text-muted font-mono truncate mt-0.5 pr-1" title={res}>
+                                              → {res}
+                                            </div>
+                                          )
+                                        })() : null}
                                         <div className="mt-1 h-1 rounded overflow-hidden bg-line flex">
                                           <div
                                             style={{
