@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MiniObserve | Trace Every Agent Step</title>
+    <link rel="icon" type="image/svg+xml" href="./images/miniobserve-icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/geist-font@latest/style.css"
+    />
+    <meta
+      name="description"
+      content="Local-First Observability for AI agents and LLM apps. Trace every run across prompts, tools, and workflow nodes with MiniObserve."
+    />
+    <style>
+      :root {
+        --bg: #0b1020;
+        --bg-elev: #0f172a;
+        --card: #0f172a;
+        --card-inset: #111b31;
+        --card-border: #27324a;
+        --text: #e6edf7;
+        --muted: #9fb0cc;
+        --brand: #7c6af7;
+        --brand-strong: #6b5ce6;
+        --ok: #7ad8a5;
+        --danger: #ff9faf;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          Geist,
+          Inter,
+          "DM Sans",
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.62;
+      }
+
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--card-inset);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 3px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+      }
+
+      .container {
+        width: min(1080px, 92vw);
+        margin: 0 auto;
+      }
+
+      .topbar {
+        padding: 18px 0;
+        border-bottom: 1px solid var(--card-border);
+        position: sticky;
+        top: 0;
+        background: color-mix(in oklab, var(--bg) 92%, transparent);
+        backdrop-filter: blur(8px);
+      }
+
+      .topbar-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+
+      .brand-icon {
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+        display: block;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .github-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--card-border);
+        border-radius: 999px;
+        padding: 7px 12px;
+        background: var(--card-inset);
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 13px;
+        line-height: 1;
+        transition: background-color 120ms ease, border-color 120ms ease;
+      }
+
+      .github-badge:hover {
+        background: #1a2746;
+        border-color: #334155;
+      }
+
+      .github-badge svg {
+        width: 14px;
+        height: 14px;
+        fill: currentColor;
+      }
+
+      .hero {
+        padding: 104px 0 56px;
+      }
+
+      .hero-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+        align-items: flex-start;
+        width: 100%;
+      }
+
+      .hero-layout > div {
+        width: 100%;
+      }
+
+      .hero-visual,
+      .section-shot {
+        overflow: hidden;
+        margin: 0;
+      }
+
+      .hero-visual {
+        width: 100%;
+      }
+
+      .hero-visual.panel {
+        padding: 0;
+      }
+
+      .hero-visual img,
+      .section-shot img {
+        width: 100%;
+        height: auto;
+        display: block;
+        border-radius: 12px;
+      }
+
+      h1 {
+        margin: 0;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        font-size: clamp(34px, 6vw, 62px);
+      }
+
+      .sub {
+        margin-top: 20px;
+        color: var(--muted);
+        font-size: clamp(16px, 2vw, 20px);
+        line-height: 1.52;
+      }
+
+      .cta-row {
+        margin-top: 32px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        font-weight: 600;
+        padding: 11px 16px;
+        text-decoration: none;
+        display: inline-block;
+        transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+      }
+
+      .btn-primary {
+        background: var(--brand);
+        border-color: var(--brand);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: var(--brand-strong);
+        border-color: var(--brand-strong);
+      }
+
+      .btn-secondary {
+        border-color: var(--card-border);
+        color: var(--text);
+        background: transparent;
+      }
+
+      .btn-secondary:hover {
+        background: var(--card-inset);
+        border-color: #334155;
+      }
+
+      section {
+        padding: 0;
+      }
+
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 24px;
+      }
+
+      .section-block {
+        margin-top: 28px;
+        padding-top: 28px;
+        border-top: 1px solid color-mix(in oklab, var(--card-border) 78%, transparent);
+      }
+
+      .contrast-title {
+        margin: 0 0 8px;
+        font-size: clamp(22px, 3.5vw, 34px);
+        letter-spacing: -0.02em;
+      }
+
+      .list {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+
+      .list li::marker {
+        color: var(--danger);
+      }
+
+      .list-ok li::marker {
+        color: var(--ok);
+      }
+
+      h2 {
+        margin: 0 0 8px;
+        font-size: clamp(24px, 4vw, 36px);
+        letter-spacing: -0.02em;
+      }
+
+      .section-lead {
+        margin: 0;
+        color: var(--muted);
+        max-width: 780px;
+        line-height: 1.55;
+      }
+
+      .feature-grid {
+        margin-top: 22px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .adjacent-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .adjacent-grid > .panel {
+        height: 100%;
+      }
+
+      .section-shot {
+        margin-top: 20px;
+      }
+
+      .shot-grid-2 {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .feature-grid .panel,
+      .steps .panel,
+      .compat-grid .panel {
+        height: 100%;
+      }
+
+      .feature h3 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+
+      .feature p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45;
+        font-size: 14px;
+      }
+
+      .steps {
+        margin-top: 20px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .step-no {
+        color: var(--ok);
+        font-weight: 700;
+        font-size: 13px;
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+      }
+
+      .step-link {
+        color: var(--brand);
+        text-decoration: none;
+      }
+
+      .step-link:hover {
+        text-decoration: underline;
+      }
+
+      code {
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: var(--card-inset);
+        border: 1px solid var(--card-border);
+        color: var(--text);
+        border-radius: 8px;
+        padding: 0.1rem 0.35rem;
+        font-size: 0.9em;
+      }
+
+      .compat-grid {
+        margin-top: 20px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .compat-card h3 {
+        margin: 0 0 6px;
+        font-size: 15px;
+        color: var(--ok);
+      }
+
+      .compat-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .cta-band {
+        margin-top: 36px;
+      }
+
+      .cta-band .panel {
+        text-align: center;
+      }
+
+      .cta-band .section-lead {
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .cta-band .cta-row {
+        justify-content: center;
+      }
+
+      .footer {
+        padding: 56px 0 72px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+      }
+
+      .footer a {
+        color: var(--muted);
+        text-decoration: none;
+      }
+
+      @media (max-width: 1080px) {
+        .feature-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 920px) {
+        .hero {
+          padding-top: 84px;
+        }
+
+        .topbar-inner {
+          flex-wrap: wrap;
+        }
+
+        .adjacent-grid,
+        .feature-grid,
+        .steps,
+        .compat-grid,
+        .shot-grid-2 {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <div class="brand"><img class="brand-icon" src="./images/miniobserve-icon.svg" alt="" />MiniObserve</div>
+        <div class="nav">
+          <span>Local-first Agent Observability for Indie Developers and Small Teams</span>
+          <a class="github-badge" href="https://github.com/imsatya/miniobserve" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.53 7.53 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 8 0Z"></path>
+            </svg>
+            View on GitHub
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- HERO — kept as-is -->
+      <section class="hero container">
+        <div class="hero-layout">
+          <div>
+            <h1>Trace Every AI Agent Step <br> From Prompt to Outcome</h1>
+            <p class="sub">
+              MiniObserve gives you full-fidelity run timelines across LLM calls, tools, and workflow
+              nodes so your team can debug faster and ship with confidence.
+             Free and Open Source.
+            <div class="cta-row" style="display: flex; justify-content: flex-end;">
+              <a class="btn btn-primary" href="https://github.com/imsatya/miniobserve#getting-started---point-your-coding-agent-to-agentsmd" target="_blank" rel="noopener noreferrer">Start Tracing</a>
+              <a class="btn btn-secondary" href="https://github.com/imsatya/miniobserve" target="_blank" rel="noopener noreferrer">Read Docs</a>
+            </div>
+    
+            </p>
+          </div>
+          <figure class="panel hero-visual">
+            <img src="./images/mo_trace.png" alt="MiniObserve trace view" />
+          </figure>
+        </div>
+      </section>
+
+      <!-- USE CASES + PROBLEM side by side -->
+      <section class="container section-block">
+        <div class="adjacent-grid">
+          <div class="panel">
+            <h2>See everything</h2>
+            <ul class="list list-ok">
+              <li>What's the estimated cost of this outcome?</li>
+              <li>Which tool call is adding latency to every response?</li>
+              <li>Is my agent actually hitting the prompt cache?</li>
+              <li>Where exactly did this run fail?</li>
+              <li>....and so much more as you build your agentic app!</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h2 class="contrast-title">Without the tradeoffs</h2>
+            <ul class="list list-danger">
+              <li>Sending your prompts to a third-party platform</li>
+              <li>Sharing your agent's behavior data</li>
+              <li>Spinning up infra just to get started</li>
+              <li>Paying for yet another subscription!</li>
+     
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- FEATURES -->
+      <section class="container section-block">
+        <h2>Built for end-to-end tracing</h2>
+        <p class="section-lead">
+          MiniObserve unifies every step of an agent run into a single trace view so you can inspect
+          what happened, when it happened, and where it broke.
+        </p>
+        <div class="feature-grid">
+          <article class="panel feature">
+            <h3>Run Timeline</h3>
+            <p>Follow each run in exact execution order from first user input to final output.</p>
+          </article>
+          <article class="panel feature">
+            <h3>Span Lineage</h3>
+            <p>Track parent-child relationships across model calls, tools, and workflow nodes.</p>
+          </article>
+          <article class="panel feature">
+            <h3>Prompt and Response Visibility</h3>
+            <p>Inspect model I/O with metadata context for precise debugging and review.</p>
+          </article>
+          <article class="panel feature">
+            <h3>Tool Call Tracing</h3>
+            <p>Capture tool inputs, outputs, latency, and errors in one place.</p>
+          </article>
+          <article class="panel feature">
+            <h3>Workflow Node Mapping</h3>
+            <p>Map spans to canonical route IDs to understand flow transitions clearly.</p>
+          </article>
+          <article class="panel feature">
+            <h3>Performance Signals</h3>
+            <p>Spot slow steps and bottlenecks with per-span timing and run-level summaries.</p>
+          </article>
+        </div>
+        <figure class="panel section-shot">
+          <img src="./images/mo_timeline.png" alt="MiniObserve timeline view" />
+        </figure>
+        <figure class="panel section-shot">
+          <img src="./images/mo_prompt_review.png" alt="MiniObserve prompt review view" />
+        </figure>
+        <figure class="panel section-shot" style="margin-top: 0;">
+          <img src="./images/mo_prompt-caching.png" alt="MiniObserve prompt caching insights" />
+        </figure>
+      
+      </section>
+
+      <!-- COMPATIBILITY -->
+      <section class="container section-block">
+        <h2> Works with LangGraph, LangChain and Custom Agents.</h2>
+        <div class="compat-grid" style="margin-top: 18px;">
+          <article class="panel compat-card">
+            <h3>LangGraph &amp; LangChain</h3>
+            <p>Native callback support. Add MiniObserve to your existing <code>graph.invoke()</code> config in 3–4 lines. No structural changes needed.</p>
+          </article>
+          <article class="panel compat-card">
+            <h3>Custom Agents</h3>
+            <p>Use the lightweight <code>Tracer</code> wrapper to capture every LLM call, tool call, and agent step with minimal code changes.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- HOW IT WORKS -->
+      <section class="container section-block">
+        <h2>Zero Friction Setup</h2>
+        <div class="shot-grid-2">
+        </div>
+        <div class="steps">
+          <article class="panel">
+            <div class="step-no">STEP 1</div>
+            <p>Point your coding agent at <a class="step-link" href="https://github.com/imsatya/miniobserve/blob/main/AGENTS.md" target="_blank" rel="noopener noreferrer">AGENTS.md</a> and tell it to instrument your app. It handles installation, setup, and wiring automatically.</p>
+          </article>
+          <article class="panel">
+            <div class="step-no">STEP 2</div>
+            <p>Run your agents.</p>
+          </article>
+          <article class="panel">
+            <div class="step-no">STEP 3</div>
+            <p>Inspect timelines, prompts, responses, tools, and errors in MiniObserve.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- SCALE CAPABILITY -->
+      <section class="container section-block">
+          <h2>Multi-tenant by design. Cloud-ready when you are.</h2>
+          <p class="section-lead">
+            Run isolated app tenants with per-API-key data separation. Start local with SQLite, then switch to Supabase with a single environment variable when you're ready to scale.
+          </p>
+      </section>
+
+      <!-- BOTTOM CTA -->
+      <section class="container cta-band section-block">
+        <div class="panel">
+          <h2>Start tracing your agents in minutes</h2>
+          <p class="section-lead">Tracing is the foundation to build with confidence.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="https://github.com/imsatya/miniobserve#getting-started---point-your-coding-agent-to-agentsmd" target="_blank" rel="noopener noreferrer">Instrument Your First Trace</a>
+            <a class="btn btn-secondary" href="https://github.com/imsatya/miniobserve/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribute!</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer-links">
+        <a href="https://github.com/imsatya/miniobserve/blob/main/README.md" target="_blank" rel="noopener noreferrer">Docs</a>
+        <a href="https://github.com/imsatya/miniobserve" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/imsatya/miniobserve/blob/main/AGENTS.md" target="_blank" rel="noopener noreferrer">AGENTS.md</a>
+        <a href="https://github.com/imsatya/miniobserve/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing</a>
+        <a href="https://github.com/imsatya/miniobserve/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">Security</a>
+        <a href="https://github.com/imsatya/miniobserve/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a>
+      </div>
+    </footer>
+  </body>
+</html>
