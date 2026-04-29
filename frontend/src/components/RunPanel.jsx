@@ -35,6 +35,10 @@ function formatLatencySeconds(sec) {
   return `${n.toFixed(2)}s`
 }
 
+function formatLatencyMs(ms) {
+  return formatLatencySeconds((Number(ms) || 0) / 1000)
+}
+
 function StatusDot({ error }) {
   return (
     <span className={`inline-block w-1.5 h-1.5 rounded-full ${error ? 'bg-[#f75f6a]' : 'bg-[#22d3a0]'}`} />
@@ -169,7 +173,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
   const resolvedAgentById = detail?.steps?.length
     ? buildAgentTraceLayout(detail.steps).resolvedAgent
     : null
-  const wf = buildWaterfallRows(activitySteps)
+  const wf = buildWaterfallRows(executionTimelineSteps)
   const wfSec = wf.map((r) => ({ ...r, latency_s: (Number(r.latency_ms) || 0) / 1000 }))
   const analysis = detail?.analysis
   const decisionObs = detail?.decision_observability || { decisions: [], integrity_alerts: [] }
@@ -236,11 +240,6 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
           onOpenLog={(id, opts) => { const rv = traceViz; setTraceViz(null); onOpenLog(id, { ...opts, returnTo: () => setTraceViz(rv) }) }}
         />
       )}
-      <p className="text-muted text-xs font-mono">
-        Grouped by <code className="text-ink">run_id</code> /{' '}
-        <code className="text-ink">run_id</code>. Click a run to expand details inline.
-      </p>
-
       <div className="bg-surface border border-line rounded-xl overflow-hidden w-full">
         <div className="px-4 py-2 border-b border-line text-xs font-mono text-muted flex justify-between items-center">
           <span>Runs</span>
@@ -266,10 +265,10 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
               </th>
               <th scope="col" className="py-2 px-3 font-normal text-left">Phase</th>
               <th scope="col" className="py-2 px-3 font-normal text-left">Run key</th>
-              <th scope="col" className="py-2 px-3 font-normal text-left">Steps</th>
-              <th scope="col" className="py-2 px-3 font-normal text-left">Cost</th>
-              <th scope="col" className="py-2 px-3 font-normal text-left">Latency</th>
-              <th scope="col" className="py-2 px-3 font-normal text-left">Last (local)</th>
+              <th scope="col" className="py-2 px-2 font-normal text-left w-[4.5rem]">Steps</th>
+              <th scope="col" className="py-2 px-2 font-normal text-left w-[6.5rem]">Cost</th>
+              <th scope="col" className="py-2 px-2 font-normal text-left w-[6.5rem]">Latency</th>
+              <th scope="col" className="py-2 px-2 font-normal text-left w-[9rem]">Last (local)</th>
               <th scope="col" className="py-2 px-3 font-normal text-center w-[5.5rem]">Status</th>
             </tr>
           </thead>
@@ -293,7 +292,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                     }`}
                     title="Click row to expand run detail"
                   >
-                    <td className="px-2 py-2 text-center align-middle">
+                    <td className="px-2 py-3 text-center align-middle">
                       <button
                         type="button"
                         title="Open trace view — multi-agent columns, lanes, and handoffs"
@@ -308,21 +307,28 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-ink hidden min-[520px]:inline">Trace</span>
                       </button>
                     </td>
-                    <td className="px-3 py-2 align-middle min-w-[10rem] max-w-[min(24rem,40vw)]">
+                    <td className="px-3 py-3 align-middle min-w-[10rem] max-w-[min(24rem,40vw)]">
                       <div className="min-w-0">
                         <CognitiveMixStrip segments={r.fingerprint_segments} modeFractions={r.mode_fractions} />
                       </div>
                     </td>
-                    <td className="px-3 py-2 max-w-[min(28rem,45vw)] truncate text-ink" title={r.run_key}>
-                      <span className="align-middle">{r.run_key}</span>
+                    <td className="px-3 py-3 max-w-[min(48rem,68vw)] text-ink" title={r.run_key}>
+                      <div className="min-w-0">
+                        <div className="truncate">{r.run_key}</div>
+                        {r.query_preview && (
+                          <div className="text-[11px] text-muted font-sans leading-snug mt-0.5 line-clamp-2 break-words" title={r.query_preview}>
+                            {r.query_preview}
+                          </div>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-3 py-2 text-muted">{r.step_count}</td>
-                    <td className="px-3 py-2 text-[#22d3a0]">${Number(r.total_cost_usd || 0).toFixed(4)}</td>
-                    <td className="px-3 py-2 text-[#f7c948]">{Number(r.total_latency_ms || 0).toFixed(0)}ms</td>
-                    <td className="px-3 py-2 text-muted whitespace-nowrap" title={r.ended_at || undefined}>
+                    <td className="px-2 py-3 text-muted">{r.step_count}</td>
+                    <td className="px-2 py-3 text-[#22d3a0]">${Number(r.total_cost_usd || 0).toFixed(4)}</td>
+                    <td className="px-2 py-3 text-[#f7c948]">{formatLatencyMs(r.total_latency_ms)}</td>
+                    <td className="px-2 py-3 text-muted whitespace-nowrap" title={r.ended_at || undefined}>
                       {formatLocalTimestamp(r.ended_at)}
                     </td>
-                    <td className="px-3 py-2 text-center"><StatusDot error={r.has_error} /></td>
+                    <td className="px-3 py-3 text-center"><StatusDot error={r.has_error} /></td>
                   </tr>
 
                   {/* Inline detail panel */}
@@ -343,7 +349,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                                       <span className="text-muted text-[9px] uppercase tracking-widest shrink-0">Session</span>
                                       <span className="font-medium text-ink">{sessionDisplayName}</span>
-                                      <span className="text-[#f7c948] tabular-nums">{sessionWallMs.toFixed(0)}ms</span>
+                                      <span className="text-[#f7c948] tabular-nums">{formatLatencyMs(sessionWallMs)}</span>
                                       <span className="text-[#22d3a0] tabular-nums">${totalRunCostUsd.toFixed(4)}</span>
                                       <span className="text-muted tabular-nums">{activitySteps.length} steps</span>
                                     </div>
@@ -427,7 +433,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                         </div>
                                       </div>
                                       <div className="relative z-[1] shrink-0 bg-surface text-[10px] text-[#f7c948] px-1 py-1.5 pl-2 tabular-nums">
-                                        {lat.toFixed(0)}ms
+                                        {formatLatencyMs(lat)}
                                       </div>
                                       <div className="relative z-[1] shrink-0 bg-surface text-[10px] text-[#22d3a0] px-1 py-1.5 tabular-nums">
                                         ${Number(s.cost_usd || 0).toFixed(4)}
@@ -548,7 +554,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                         {wfSec.map((_, i) => (
                                           <Cell
                                             key={i}
-                                            fill={stepCognitiveDotColor(activitySteps[i])}
+                                            fill={stepCognitiveDotColor(executionTimelineSteps[i])}
                                             fillOpacity={0.85}
                                           />
                                         ))}

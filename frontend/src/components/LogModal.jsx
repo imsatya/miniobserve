@@ -309,12 +309,13 @@ export default function LogModal({ log, runContext, onClose, onPrev, onNext, mod
     if (!rows.length) return []
     return rows.map((c) => ({ ...c, offsetMs: Number.isFinite(Number(c?.offset_ms)) ? Number(c.offset_ms) : null }))
   })()
+  const formatLatencyMs = (ms) => `${((Number(ms) || 0) / 1000).toFixed(2)}s`
 
   const metricItems = [
     ...(stepNumber != null ? [{ label: 'Step', value: `#${stepNumber}` }] : []),
     { label: 'log_id', value: String(log.id) },
     { label: 'Model', value: log.model },
-    { label: 'Latency', value: `${log.latency_ms?.toFixed(0)}ms` },
+    { label: 'Latency', value: formatLatencyMs(log.latency_ms) },
     { label: 'Cost', value: `$${log.cost_usd?.toFixed(6)}` },
     { label: 'Input tokens', value: log.input_tokens?.toLocaleString() },
     { label: 'Output tokens', value: log.output_tokens?.toLocaleString() },
@@ -481,7 +482,7 @@ export default function LogModal({ log, runContext, onClose, onPrev, onNext, mod
                 <div className="space-y-1 text-ink">
                   {decisionChronologyRows.map((c, i) => (
                     <div key={`chron-${c.id}-${i}`} className="break-words [overflow-wrap:anywhere]">
-                      {i + 1}. {formatTimeWithMs(c.timestamp)} {c.offsetMs != null ? `(@${c.offsetMs}ms)` : ''} {' -> '} {(c.chosen || []).join(', ') || c.type}
+                      {i + 1}. {formatTimeWithMs(c.timestamp)} {c.offsetMs != null ? `(@${(c.offsetMs / 1000).toFixed(3)}s)` : ''} {' -> '} {(c.chosen || []).join(', ') || c.type}
                     </div>
                   ))}
                   {!decisionChronologyRows.length && <div>—</div>}

@@ -246,6 +246,7 @@ export default function RunTraceV2({
   spanCount = 0,
   anyError = false,
 }) {
+  const formatLatencyMs = (ms) => `${((Number(ms) || 0) / 1000).toFixed(2)}s`
   const layout = useMemo(() => buildAgentTraceLayout(steps || []), [steps])
   const siblingIds = useMemo(() => (Array.isArray(steps) ? steps.map((s) => s.id) : []), [steps])
   const { agents, blocksByAgent, handoffEdges, finalLlm, routeAgents } = layout
@@ -394,7 +395,7 @@ export default function RunTraceV2({
                               </span>
                             )}
                             <span className="text-[10px] text-muted font-mono shrink-0 ml-auto">
-                              {Number(llm.latency_ms || 0).toFixed(0)}ms
+                              {formatLatencyMs(llm.latency_ms)}
                             </span>
                           </div>
                           {routing && resp && (
