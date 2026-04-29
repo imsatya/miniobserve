@@ -254,3 +254,89 @@ def test_run_step_trace_display_label_prefers_agent_span_name():
         "metadata": {"span_type": "llm", "agent_span_name": "human-step"},
     }
     assert run_step_trace_display_label(row) == "human-step"
+
+
+def test_run_logs_includes_decision_observability(client):
+    tid = uuid.uuid4().hex[:12]
+    root = client.post(
+        "/api/log",
+        json={
+            "run_id": tid,
+            "model": "router",
+            "provider": "agent",
+            "prompt": "route",
+            "response": "ok",
+            "span_type": "agent",
+            "metadata": {
+                "decision": {
+                    "type": "workflow_routing",
+                    "chosen": ["route:billing"],
+                    "available": ["route:billing", "route:security"],
+                    "expected_downstream": ["tool:refund_policy", "tool:security_escalation"],
+                }
+            },
+        },
+    )
+    assert root.status_code == 200, root.text
+    root_id = root.json()["id"]
+    child = client.post(
+        "/api/log",
+        json={
+            "run_id": tid,
+            "model": "",
+            "provider": "tool",
+            "prompt": "{}",
+            "response": "{}",
+            "span_type": "tool",
+            "parent_span_id": root_id,
+            "metadata": {"tool_name": "refund_policy"},
+        },
+    )
+    assert child.status_code == 200, child.text
+
+    detail = client.get("/api/run-logs", params={"run_key": tid})
+    assert detail.status_code == 200
+    payload = detail.json()
+    dob = payload.get("decision_observability") or {}
+    assert len(dob.get("decisions") or []) == 1
+    assert (dob["decisions"][0].get("missing_expected") or []) == ["tool:security_escalation"]
+
+
+def test_run_logs_decision_observability_matching_mode_canonical(client):
+    tid = uuid.uuid4().hex[:12]
+    root = client.post(
+        "/api/log",
+        json={
+            "run_id": tid,
+            "model": "router",
+            "provider": "agent",
+            "prompt": "route",
+            "response": "ok",
+            "span_type": "agent",
+            "metadata": {
+                "decision": {
+                    "type": "workflow_routing",
+                    "chosen": ["route:research"],
+                    "expected_downstream": ["route:final"],
+                }
+            },
+        },
+    )
+    root_id = root.json()["id"]
+    child = client.post(
+        "/api/log",
+        json={
+            "run_id": tid,
+            "model": "gpt-4o",
+            "provider": "openai",
+            "prompt": "p",
+            "response": "r",
+            "span_type": "llm",
+            "parent_span_id": root_id,
+            "metadata": {"workflow_node": "route:final"},
+        },
+    )
+    assert child.status_code == 200, child.text
+    detail = client.get("/api/run-logs", params={"run_key": tid})
+    dec = (detail.json().get("decision_observability") or {}).get("decisions") or []
+    assert dec and dec[0].get("matching_mode") == "canonical"

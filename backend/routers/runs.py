@@ -45,6 +45,7 @@ def get_run_logs_detail(
     steps = run_cognitive.enrich_steps_with_cognitive(steps)
     analysis = run_utils.analyze_run(steps)
     cache_breakdown = run_utils.cache_breakdown_for_run(steps)
+    decision_observability = run_utils.decision_observability_for_run(steps)
     summ = db.fetch_run_summaries_batch(app_name, [run_key]).get(run_key) or {}
     cognitive = {
         "mode_fractions": summ.get("mode_fractions") if isinstance(summ.get("mode_fractions"), dict) else {},
@@ -62,6 +63,7 @@ def get_run_logs_detail(
         "steps": steps,
         "analysis": analysis,
         "cache_breakdown": cache_breakdown,
+        "decision_observability": decision_observability,
         "cognitive": cognitive,
     }
 

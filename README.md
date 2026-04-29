@@ -122,6 +122,32 @@ In local mode the server accepts requests with no key or with `Bearer sk-local-d
 **Can I use this without the Python SDK?**
 Yes — any language can send spans via `POST /api/log` or `POST /api/logs`. Full schema at `/docs` on the running server.
 
+**Can MiniObserve show deterministic decision paths (chosen/skipped/missing)?**
+Yes. Emit a namespaced decision block on a span:
+
+```json
+{
+  "metadata": {
+    "decision": {
+      "type": "workflow_routing",
+      "chosen": ["route:billing"],
+      "available": ["route:billing", "route:security"],
+      "selection_signals": {"priority": "speed"},
+      "expected_downstream": ["tool:refund_policy", "tool:security_escalation"],
+      "impact": {"status": "ok"}
+    }
+  }
+}
+```
+
+MiniObserve computes deterministic fields with no extra LLM calls:
+- `skipped = available - chosen`
+- `missing_expected = expected_downstream - observed_descendants`
+- downstream impact rollups from descendant spans (latency/tokens/cost/errors)
+
+ID conventions for matching: `tool:<name>`, `route:<name>`, `agent:<name>`, `workflow:<name>`.
+For route/workflow checks, emit canonical IDs on orchestration spans (preferred `metadata.workflow_node`, optional `metadata.route_id`) and reference those IDs in `expected_downstream`.
+
 ---
 
 ## Storage

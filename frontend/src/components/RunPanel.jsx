@@ -16,6 +16,7 @@ import {
   isSessionEnvelopeSpan,
   metadataObject,
   stepCognitiveDotColor,
+  aggregateDecisionForRun,
 } from '../runUi.js'
 import RunCacheBreakdown from './RunCacheBreakdown.jsx'
 import RunCachingSummary from './RunCachingSummary.jsx'
@@ -159,19 +160,30 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
   const activitySteps = sessionEnvelope
     ? stepsOrdered.filter((s) => !isSessionEnvelopeSpan(s))
     : stepsOrdered
+  const executionTimelineSteps = activitySteps.filter((s) => {
+    const md = metadataObject(s)
+    return !(md?.decision && typeof md.decision === 'object')
+  })
+  const executionStepIdSet = new Set(executionTimelineSteps.map((s) => String(s.id)))
+  const executionSiblingIds = executionTimelineSteps.map((s) => s.id)
   const resolvedAgentById = detail?.steps?.length
     ? buildAgentTraceLayout(detail.steps).resolvedAgent
     : null
   const wf = buildWaterfallRows(activitySteps)
   const wfSec = wf.map((r) => ({ ...r, latency_s: (Number(r.latency_ms) || 0) / 1000 }))
   const analysis = detail?.analysis
+  const decisionObs = detail?.decision_observability || { decisions: [], integrity_alerts: [] }
+  const runDecisionSummary = aggregateDecisionForRun(activitySteps)
   const cacheBreakdown = (() => {
     if (!detail?.steps?.length) return null
-    const fallback = computeCacheBreakdownFromSteps(detail.steps, { resolvedAgentById })
+    const executionSteps = detail.steps.filter((s) => executionStepIdSet.has(String(s.id)))
+    const fallback = computeCacheBreakdownFromSteps(executionSteps, { resolvedAgentById })
     if (!detail?.cache_breakdown?.rows?.length) return fallback
 
     const stepById = new Map(detail.steps.map((s) => [String(s.id), s]))
-    const rows = detail.cache_breakdown.rows.map((r) => {
+    const rows = detail.cache_breakdown.rows
+      .filter((r) => executionStepIdSet.has(String(r.id)))
+      .map((r) => {
       const step = stepById.get(String(r.id))
       if (!step) return r
       return {
@@ -179,7 +191,22 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
         label: traceStepDisplayLabel(step, { resolvedAgentById }),
       }
     })
-    return { ...detail.cache_breakdown, rows }
+    const totals = rows.reduce((acc, r) => {
+      const cached = Number(r.cached || 0)
+      const uncached = Number(r.uncached || 0)
+      const output = Number(r.output || 0)
+      const prompt_tokens = Number(r.prompt_tokens || (cached + uncached))
+      const cost_usd = Number(r.cost_usd || 0)
+      acc.cached += cached
+      acc.uncached += uncached
+      acc.output += output
+      acc.prompt_tokens += prompt_tokens
+      acc.cost_usd += cost_usd
+      return acc
+    }, { cached: 0, uncached: 0, output: 0, prompt_tokens: 0, cost_usd: 0 })
+    totals.cache_pct = totals.prompt_tokens > 0 ? Math.round((totals.cached / totals.prompt_tokens) * 10000) / 100 : null
+    totals.has_cached_prompt_data = totals.cached > 0
+    return { ...detail.cache_breakdown, rows, totals }
   })()
   const sessionWallMs =
     sessionEnvelope && Number(sessionEnvelope.latency_ms) > 0
@@ -325,7 +352,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                 )}
                                 <div className="overflow-hidden">
                                 <div className="max-h-[min(60vh,560px)] overflow-y-auto">
-                                {activitySteps.map((s, vi) => {
+                                {executionTimelineSteps.map((s, vi) => {
                                   const origIdx = stepsOrdered.findIndex((x) => x.id === s.id)
                                   const lat = Number(s.latency_ms || 0)
                                   const w = (lat / maxStepLat) * 100
@@ -340,7 +367,7 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                     <div
                                       key={s.id}
                                       className={`flex items-stretch border-b border-line/40 cursor-pointer hover:bg-inset ${stuck ? 'bg-[#f75f6a]/8' : waiting ? 'bg-[#f59e0b]/8' : ''}`}
-                                      onClick={() => onOpenLog(s.id, { runKey: selectedKey, steps: detail?.steps })}
+                                      onClick={() => onOpenLog(s.id, { runKey: selectedKey, steps: detail?.steps, siblings: executionSiblingIds })}
                                     >
                                       <div className="w-7 shrink-0 text-[10px] text-muted px-1 py-1.5 text-right">{vi + 1}</div>
                                       <div
@@ -408,6 +435,45 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                     </div>
                                   )
                                 })}
+                                {!!runDecisionSummary && (
+                                  <div className="px-3 py-2 border-y border-line/60 bg-inset/40">
+                                    <span className="text-[9px] font-mono uppercase tracking-widest text-muted">Decision</span>
+                                  </div>
+                                )}
+                                {!!runDecisionSummary && (
+                                  <div
+                                    className="flex items-stretch border-b border-line/40 cursor-pointer hover:bg-inset"
+                                    onClick={() =>
+                                      onOpenLog(runDecisionSummary.primaryStepId, {
+                                        runKey: selectedKey,
+                                        steps: detail?.steps,
+                                        modalMode: 'decision-aggregate',
+                                        decisionAggregate: runDecisionSummary,
+                                      })
+                                    }
+                                  >
+                                    <div className="w-7 shrink-0 text-[10px] text-muted px-1 py-1.5 text-right">•</div>
+                                    <div className="flex-1 min-w-0 py-1 pr-2 overflow-hidden">
+                                      <div className="flex items-center gap-2 text-[11px] font-mono min-w-0">
+                                        <span className="inline-flex items-center rounded px-1.5 py-0.5 border text-[9px] uppercase tracking-wide text-emerald-600 border-emerald-500/35 bg-emerald-500/10">
+                                          decision
+                                        </span>
+                                        <span className="text-ink truncate min-w-0">
+                                          {runDecisionSummary.types.join(', ') || 'routing'}
+                                        </span>
+                                      </div>
+                                      <div className="text-[10px] text-muted font-mono truncate mt-0.5 pr-1" title={`emitters: ${runDecisionSummary.emitters.join(', ')}`}>
+                                        emitters: {runDecisionSummary.emitters.join(', ') || 'unknown'}
+                                      </div>
+                                    </div>
+                                    <div className="relative z-[1] shrink-0 bg-surface text-[10px] text-[#f7c948] px-1 py-1.5 pl-2 tabular-nums">
+                                      {runDecisionSummary.stepCount} span{runDecisionSummary.stepCount === 1 ? '' : 's'}
+                                    </div>
+                                    <div className="relative z-[1] shrink-0 bg-surface text-[10px] text-[#22d3a0] px-1 py-1.5 tabular-nums">
+                                      open
+                                    </div>
+                                  </div>
+                                )}
                                 </div>
                                 </div>
                               </div>
@@ -420,6 +486,31 @@ export default function RunPanel({ onOpenLog, runsRefreshNonce = 0 }) {
                                 {cacheBreakdown.totals && (
                                   <RunCachingSummary totals={cacheBreakdown.totals} variant="inline" />
                                 )}
+                              </div>
+                            )}
+
+                            {!!decisionObs?.integrity_alerts?.length && (
+                              <div className="rounded-lg bg-surface border border-line p-3">
+                                <div className="text-[10px] font-mono uppercase tracking-widest text-muted mb-2">Integrity alerts</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {decisionObs.integrity_alerts.map((a, idx) => (
+                                    (() => {
+                                      const stepPos = activitySteps.findIndex((s) => Number(s.id) === Number(a.step_id))
+                                      const stepLabel = stepPos >= 0 ? `Step #${stepPos + 1}` : `Step ${a.step_id}`
+                                      return (
+                                    <button
+                                      key={`${a.kind}-${a.step_id}-${idx}`}
+                                      type="button"
+                                      onClick={() => onOpenLog(a.step_id, { runKey: selectedKey, steps: detail?.steps })}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[#f75f6a]/35 text-[#f75f6a] text-[10px] font-mono hover:bg-[#f75f6a]/10"
+                                      title={a.message || a.kind}
+                                    >
+                                      {stepLabel}: {a.kind}{a.matching_mode ? ` (${a.matching_mode})` : ''}
+                                    </button>
+                                      )
+                                    })()
+                                  ))}
+                                </div>
                               </div>
                             )}
 

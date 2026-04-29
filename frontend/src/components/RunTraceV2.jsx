@@ -247,6 +247,7 @@ export default function RunTraceV2({
   anyError = false,
 }) {
   const layout = useMemo(() => buildAgentTraceLayout(steps || []), [steps])
+  const siblingIds = useMemo(() => (Array.isArray(steps) ? steps.map((s) => s.id) : []), [steps])
   const { agents, blocksByAgent, handoffEdges, finalLlm, routeAgents } = layout
 
   const [openKey, setOpenKey] = useState(null)
@@ -434,7 +435,7 @@ export default function RunTraceV2({
                               <button
                                 type="button"
                                 className="text-[11px] font-mono text-ink hover:text-muted"
-                                onClick={() => onOpenLog?.(llm.id, { runKey, steps })}
+                                onClick={() => onOpenLog?.(llm.id, { runKey, steps, siblings: siblingIds })}
                               >
                                 Open full log…
                               </button>
@@ -517,7 +518,7 @@ export default function RunTraceV2({
                                       <button
                                         type="button"
                                         className="text-ink hover:text-muted"
-                                        onClick={() => onOpenLog?.(tool.id, { runKey, steps })}
+                                        onClick={() => onOpenLog?.(tool.id, { runKey, steps, siblings: siblingIds })}
                                       >
                                         Open full log…
                                       </button>

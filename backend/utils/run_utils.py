@@ -1,5 +1,6 @@
 """Run grouping and lightweight analysis from stored logs."""
 import json
+from collections import defaultdict, deque
 from typing import Any, Dict, List, Optional
 
 from cognitive.modes import infer_is_tool_span, is_session_envelope_row
@@ -16,6 +17,234 @@ def _parse_metadata(raw: Any) -> dict:
         except Exception:
             return {}
     return {}
+
+
+_DECISION_ALLOWED_PREFIXES = {"tool", "route", "agent", "workflow"}
+
+
+def _normalize_decision_id(raw: Any) -> str:
+    s = str(raw or "").strip().lower()
+    if not s:
+        return ""
+    if ":" in s:
+        pref, rest = s.split(":", 1)
+        pref = pref.strip()
+        rest = rest.strip()
+        if pref in _DECISION_ALLOWED_PREFIXES and rest:
+            return f"{pref}:{rest}"
+        return s
+    return f"workflow:{s}"
+
+
+def _coerce_decision_ids(raw: Any) -> list[str]:
+    vals = raw if isinstance(raw, list) else [raw]
+    out: list[str] = []
+    seen: set[str] = set()
+    for v in vals:
+        nid = _normalize_decision_id(v)
+        if not nid or nid in seen:
+            continue
+        seen.add(nid)
+        out.append(nid)
+    return out
+
+
+def _decision_block_from_metadata(md: dict) -> dict:
+    dec = md.get("decision")
+    if not isinstance(dec, dict):
+        return {}
+    out: dict[str, Any] = {}
+    dtype = str(dec.get("type") or "").strip()
+    if dtype:
+        out["type"] = dtype
+    chosen = _coerce_decision_ids(dec.get("chosen"))
+    if chosen:
+        out["chosen"] = chosen
+    available = _coerce_decision_ids(dec.get("available"))
+    if available:
+        out["available"] = available
+    expected = _coerce_decision_ids(dec.get("expected_downstream"))
+    if expected:
+        out["expected_downstream"] = expected
+    signals = dec.get("selection_signals")
+    if isinstance(signals, dict):
+        out["selection_signals"] = signals
+    impact = dec.get("impact")
+    if isinstance(impact, dict):
+        out["impact"] = impact
+    return out
+
+
+def _observed_identifiers_with_mode(row: dict) -> tuple[set[str], bool, bool]:
+    md = _parse_metadata(row.get("metadata"))
+    out: set[str] = set()
+    used_canonical = False
+    used_fallback = False
+    tn = str(md.get("tool_name") or "").strip()
+    if tn:
+        out.add(_normalize_decision_id(f"tool:{tn}"))
+        used_canonical = True
+    wf = str(md.get("workflow_node") or "").strip()
+    if wf:
+        out.add(_normalize_decision_id(wf))
+        used_canonical = True
+    rid = str(md.get("route_id") or "").strip()
+    if rid:
+        out.add(_normalize_decision_id(f"route:{rid}"))
+        used_canonical = True
+    an = str(md.get("agent_name") or "").strip()
+    if an:
+        out.add(_normalize_decision_id(f"agent:{an}"))
+        used_fallback = True
+    lane = str(md.get("trace_lane") or md.get("mo_trace_lane") or "").strip()
+    if lane:
+        out.add(_normalize_decision_id(f"route:{lane}"))
+        used_fallback = True
+    sn = str(row.get("span_name") or "").strip()
+    if sn:
+        out.add(_normalize_decision_id(f"workflow:{sn}"))
+        used_fallback = True
+    return ({x for x in out if x}, used_canonical, used_fallback)
+
+
+def decision_observability_for_run(steps: List[dict]) -> dict:
+    """
+    Deterministic decision observability derived from `metadata.decision`.
+
+    - skipped = available - chosen
+    - missing_expected = expected_downstream - observed_descendants
+    - computed impact: descendants latency/tokens/cost/errors
+    """
+    if not steps:
+        return {"decisions": [], "integrity_alerts": []}
+
+    by_id: dict[int, dict] = {}
+    children: dict[int, list[int]] = defaultdict(list)
+    for s in steps:
+        sid = s.get("id")
+        if sid is None:
+            continue
+        try:
+            sid_i = int(sid)
+        except Exception:
+            continue
+        by_id[sid_i] = s
+    for s in steps:
+        sid = s.get("id")
+        pid = s.get("parent_span_id")
+        if sid is None or pid is None:
+            continue
+        try:
+            sid_i = int(sid)
+            pid_i = int(pid)
+        except Exception:
+            continue
+        if pid_i in by_id:
+            children[pid_i].append(sid_i)
+
+    decisions: list[dict] = []
+    alerts: list[dict] = []
+
+    for s in steps:
+        sid = s.get("id")
+        if sid is None:
+            continue
+        try:
+            sid_i = int(sid)
+        except Exception:
+            continue
+        md = _parse_metadata(s.get("metadata"))
+        decision = _decision_block_from_metadata(md)
+        if not decision:
+            continue
+
+        q: deque[int] = deque(children.get(sid_i, []))
+        desc: list[dict] = []
+        seen: set[int] = set()
+        while q:
+            cur = q.popleft()
+            if cur in seen or cur not in by_id:
+                continue
+            seen.add(cur)
+            row = by_id[cur]
+            desc.append(row)
+            for nxt in children.get(cur, []):
+                if nxt not in seen:
+                    q.append(nxt)
+
+        observed: set[str] = set()
+        observed_canonical: set[str] = set()
+        observed_fallback: set[str] = set()
+        for d in desc:
+            ids, has_canon, has_fallback = _observed_identifiers_with_mode(d)
+            observed |= ids
+            if has_canon:
+                observed_canonical |= ids
+            if has_fallback:
+                observed_fallback |= ids
+
+        chosen = decision.get("chosen") or []
+        available = decision.get("available") or []
+        expected = decision.get("expected_downstream") or []
+        skipped = [x for x in available if x not in chosen]
+        missing = [x for x in expected if x not in observed]
+        used_modes = set()
+        for x in expected:
+            if x in observed_canonical:
+                used_modes.add("canonical")
+            elif x in observed_fallback:
+                used_modes.add("fallback")
+        if not used_modes:
+            matching_mode = "canonical" if (observed_canonical and not observed_fallback) else ("fallback" if observed_fallback else "canonical")
+        elif len(used_modes) > 1:
+            matching_mode = "mixed"
+        else:
+            matching_mode = next(iter(used_modes))
+
+        computed_impact = {
+            "descendant_span_count": len(desc),
+            "latency_ms": round(sum(float(d.get("latency_ms") or 0.0) for d in desc), 3),
+            "cost_usd": round(sum(float(d.get("cost_usd") or 0.0) for d in desc), 8),
+            "input_tokens": int(sum(int(d.get("input_tokens") or 0) for d in desc)),
+            "output_tokens": int(sum(int(d.get("output_tokens") or 0) for d in desc)),
+            "error_count": int(sum(1 for d in desc if d.get("error"))),
+        }
+
+        entry = {
+            "step_id": sid_i,
+            "type": decision.get("type") or "",
+            "chosen": chosen,
+            "available": available,
+            "skipped": skipped,
+            "selection_signals": decision.get("selection_signals") or {},
+            "expected_downstream": expected,
+            "missing_expected": missing,
+            "observed_identifiers": sorted(observed),
+            "matching_mode": matching_mode,
+            "impact": {
+                "reported": decision.get("impact") or {},
+                "computed": computed_impact,
+            },
+            "provenance": {
+                "selection_signals": "emitted" if isinstance(decision.get("selection_signals"), dict) else "absent",
+                "impact_reported": "emitted" if isinstance(decision.get("impact"), dict) else "absent",
+                "impact_computed": "computed",
+            },
+        }
+        decisions.append(entry)
+
+        if missing:
+            alerts.append(
+                {
+                    "kind": "missing_expected_path",
+                    "step_id": sid_i,
+                    "message": f"Expected path not observed: {', '.join(missing)}",
+                    "missing": missing,
+                    "matching_mode": matching_mode,
+                }
+            )
+
+    return {"decisions": decisions, "integrity_alerts": alerts}
 
 
 def effective_run_key(row: dict) -> str:

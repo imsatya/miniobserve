@@ -42,3 +42,26 @@ def test_remote_order_single_root_agent_before_llm():
     assert ordered[0].span_type == "agent" and ordered[0].name == "root"
     assert ordered[1].span_type == "llm"
     _assert_parent_before_child(ordered, root.span_id, llm)
+
+
+def test_run_tool_extra_metadata_serialized_in_metadata():
+    t = Tracer()
+    with t.span("agent", "root") as root:
+        _out, _sid = t.run_tool(
+            name="tool-step",
+            parent_id=root.span_id,
+            tool_name="refund_policy",
+            tool_args={"ticket_id": "t1"},
+            fn=lambda: "ok",
+            extra_metadata={
+                "decision": {
+                    "type": "tool_select",
+                    "chosen": "tool:refund_policy",
+                    "available": ["tool:refund_policy", "tool:security_escalation"],
+                }
+            },
+        )
+    tool_span = next(s for s in t.spans if s.span_type == "tool")
+    body = t._span_to_log_body(tool_span)
+    md = body.get("metadata") or {}
+    assert md.get("decision", {}).get("type") == "tool_select"
