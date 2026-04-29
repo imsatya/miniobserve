@@ -259,6 +259,45 @@ def effective_run_key(row: dict) -> str:
     return f"orphan-{row.get('id', 0)}"
 
 
+def _short_text(s: Any, max_len: int = 140) -> str:
+    t = " ".join(str(s or "").split()).strip()
+    if not t:
+        return ""
+    return t if len(t) <= max_len else (t[: max_len - 1] + "…")
+
+
+def _query_preview_from_row(row: dict) -> str:
+    md = _parse_metadata(row.get("metadata"))
+    dec = md.get("decision")
+    if isinstance(dec, dict):
+        sig = dec.get("selection_signals")
+        if isinstance(sig, dict):
+            q = sig.get("query")
+            if q:
+                return _short_text(q)
+
+    msgs = row.get("messages")
+    if isinstance(msgs, str):
+        try:
+            msgs = json.loads(msgs)
+        except Exception:
+            msgs = None
+    if isinstance(msgs, list) and msgs:
+        for m in reversed(msgs):
+            if not isinstance(m, dict):
+                continue
+            role = str(m.get("role") or "").strip().lower()
+            if role in ("user", "human") and m.get("content"):
+                return _short_text(m.get("content"))
+
+    prompt = row.get("prompt")
+    if isinstance(prompt, str):
+        p = prompt.strip()
+        if p and not p.startswith("{") and p.lower() not in ("route_decision",):
+            return _short_text(p)
+    return ""
+
+
 def aggregate_runs(rows: List[dict]) -> List[dict]:
     """Group rows by effective_run_key; return run summary dicts, newest first."""
     groups: Dict[str, dict] = {}
@@ -279,6 +318,8 @@ def aggregate_runs(rows: List[dict]) -> List[dict]:
                 "_latency_sum_ms": 0.0,
                 "_session_latency_ms": None,
                 "has_error": False,
+                "query_preview": "",
+                "_query_preview_ts": "",
             }
         g = groups[rk]
         g["step_count"] += 1
@@ -294,6 +335,12 @@ def aggregate_runs(rows: List[dict]) -> List[dict]:
             g["started_at"] = ts
         if ts and (not g["ended_at"] or ts > g["ended_at"]):
             g["ended_at"] = ts
+        qp = _query_preview_from_row(row)
+        if qp:
+            qpts = str(ts or "")
+            if not g["query_preview"] or (qpts and (not g["_query_preview_ts"] or qpts < g["_query_preview_ts"])):
+                g["query_preview"] = qp
+                g["_query_preview_ts"] = qpts
 
     out = []
     for g in groups.values():
@@ -321,6 +368,7 @@ def aggregate_runs(rows: List[dict]) -> List[dict]:
                 g["total_latency_ms"] = float(g.get("_latency_sum_ms") or 0.0)
         g.pop("_latency_sum_ms", None)
         g.pop("_session_latency_ms", None)
+        g.pop("_query_preview_ts", None)
         out.append(g)
     out.sort(key=lambda x: x.get("ended_at") or "", reverse=True)
     return out

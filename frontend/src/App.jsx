@@ -20,7 +20,7 @@ import { formatLocalTimestamp } from './formatTime.js'
 const fmt = {
   cost: v => `$${(v || 0).toFixed(4)}`,
   tokens: v => (v || 0).toLocaleString(),
-  ms: v => `${(v || 0).toFixed(0)}ms`,
+  ms: v => `${((v || 0) / 1000).toFixed(2)}s`,
   pct: v => `${(v || 0).toFixed(1)}%`,
 }
 
@@ -531,7 +531,7 @@ export default function App() {
                           <td className="py-2 pr-4 text-ink">{m.calls?.toLocaleString()}</td>
                           <td className="py-2 pr-4 text-ink">{m.tokens?.toLocaleString()}</td>
                           <td className="py-2 pr-4 text-[#22d3a0]">${m.cost?.toFixed(4)}</td>
-                          <td className="py-2 pr-4 text-[#f7c948]">{m.avg_latency?.toFixed(0)}ms</td>
+                          <td className="py-2 pr-4 text-[#f7c948]">{((Number(m.avg_latency) || 0) / 1000).toFixed(2)}s</td>
                         </tr>
                       ))}
                     </tbody>
@@ -755,7 +755,7 @@ export default function App() {
                       </td>
                       <td className="px-4 py-3 text-muted">{log.total_tokens?.toLocaleString()}</td>
                       <td className="px-4 py-3 text-[#22d3a0]">${log.cost_usd?.toFixed(6)}</td>
-                      <td className="px-4 py-3 text-[#f7c948]">{log.latency_ms?.toFixed(0)}ms</td>
+                      <td className="px-4 py-3 text-[#f7c948]">{((Number(log.latency_ms) || 0) / 1000).toFixed(2)}s</td>
                       <td className="px-4 py-3 text-muted whitespace-nowrap" title={log.timestamp || undefined}>
                         {formatLocalTimestamp(log.timestamp)}
                       </td>
