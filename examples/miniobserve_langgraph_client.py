@@ -106,6 +106,46 @@ def miniobserve_invoke_config(tracer: Any, root_span: Any) -> dict[str, Any]:
     }
 
 
+def decision_metadata(
+    *,
+    decision_type: str,
+    chosen: str | list[str],
+    available: list[str] | None = None,
+    selection_signals: dict[str, Any] | None = None,
+    expected_downstream: list[str] | None = None,
+    impact: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Build ``metadata.decision`` payload for deterministic decision observability.
+
+    IDs should be namespaced for reliable matching:
+    ``tool:<name>``, ``route:<name>``, ``agent:<name>``, ``workflow:<name>``.
+    """
+    return {
+        "decision": {
+            "type": str(decision_type or "").strip(),
+            "chosen": chosen if isinstance(chosen, list) else [str(chosen)],
+            "available": list(available or []),
+            "selection_signals": dict(selection_signals or {}),
+            "expected_downstream": list(expected_downstream or []),
+            "impact": dict(impact or {}),
+        }
+    }
+
+
+def workflow_node_metadata(node_id: str, *, route_id: str | None = None) -> dict[str, Any]:
+    """
+    Canonical orchestration identifier for deterministic path validation.
+
+    Prefer ``workflow_node`` values like ``route:final`` / ``route:research``.
+    ``route_id`` is optional compatibility alias.
+    """
+    out: dict[str, Any] = {"workflow_node": str(node_id or "").strip()}
+    if route_id:
+        out["route_id"] = str(route_id).strip()
+    return out
+
+
 def export_tracer_ingest_batch(tracer: Any) -> dict[str, Any]:
     """
     Return the JSON body MiniObserve would receive on ``POST .../api/logs`` for this run:
@@ -150,8 +190,10 @@ def print_miniobserve_ingest_footer(tracer: Any) -> None:
 __all__ = [
     "CompactToolLogMiniObserveCallbackHandler",
     "configure_miniobserve_env",
+    "decision_metadata",
     "export_tracer_ingest_batch",
     "miniobserve_invoke_config",
     "print_miniobserve_ingest_footer",
     "traced_agent_session",
+    "workflow_node_metadata",
 ]

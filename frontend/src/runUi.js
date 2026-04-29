@@ -126,6 +126,229 @@ export function metadataObject(log) {
   return {}
 }
 
+const DECISION_ALLOWED_PREFIXES = new Set(['tool', 'route', 'agent', 'workflow'])
+
+export function normalizeDecisionId(raw) {
+  const s = String(raw ?? '').trim().toLowerCase()
+  if (!s) return ''
+  if (s.includes(':')) {
+    const i = s.indexOf(':')
+    const p = s.slice(0, i).trim()
+    const rest = s.slice(i + 1).trim()
+    if (DECISION_ALLOWED_PREFIXES.has(p) && rest) return `${p}:${rest}`
+    return s
+  }
+  return `workflow:${s}`
+}
+
+function coerceDecisionIds(raw) {
+  const vals = Array.isArray(raw) ? raw : [raw]
+  const out = []
+  const seen = new Set()
+  for (const v of vals) {
+    const n = normalizeDecisionId(v)
+    if (!n || seen.has(n)) continue
+    seen.add(n)
+    out.push(n)
+  }
+  return out
+}
+
+export function decisionBlockFromMetadata(log) {
+  const md = metadataObject(log)
+  const d = md.decision
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return null
+  const out = {
+    type: String(d.type || '').trim(),
+    chosen: coerceDecisionIds(d.chosen),
+    available: coerceDecisionIds(d.available),
+    expected_downstream: coerceDecisionIds(d.expected_downstream),
+    selection_signals:
+      d.selection_signals && typeof d.selection_signals === 'object' && !Array.isArray(d.selection_signals)
+        ? d.selection_signals
+        : {},
+    impact:
+      d.impact && typeof d.impact === 'object' && !Array.isArray(d.impact)
+        ? d.impact
+        : {},
+  }
+  if (!out.type && !out.chosen.length && !out.available.length && !out.expected_downstream.length) return null
+  return out
+}
+
+function observedDecisionIdentifiers(step) {
+  const md = metadataObject(step)
+  const ids = new Set()
+  const canonical = new Set()
+  const fallback = new Set()
+  if (md.tool_name != null && String(md.tool_name).trim()) {
+    const id = normalizeDecisionId(`tool:${md.tool_name}`)
+    ids.add(id); canonical.add(id)
+  }
+  if (md.workflow_node != null && String(md.workflow_node).trim()) {
+    const id = normalizeDecisionId(md.workflow_node)
+    ids.add(id); canonical.add(id)
+  }
+  if (md.route_id != null && String(md.route_id).trim()) {
+    const id = normalizeDecisionId(`route:${md.route_id}`)
+    ids.add(id); canonical.add(id)
+  }
+  if (md.agent_name != null && String(md.agent_name).trim()) {
+    const id = normalizeDecisionId(`agent:${md.agent_name}`)
+    ids.add(id); fallback.add(id)
+  }
+  if (md.trace_lane != null && String(md.trace_lane).trim()) {
+    const id = normalizeDecisionId(`route:${md.trace_lane}`)
+    ids.add(id); fallback.add(id)
+  }
+  if (step.span_name != null && String(step.span_name).trim()) {
+    const id = normalizeDecisionId(`workflow:${step.span_name}`)
+    ids.add(id); fallback.add(id)
+  }
+  return { ids, canonical, fallback }
+}
+
+export function decisionObservabilityForStep(log, steps) {
+  const decision = decisionBlockFromMetadata(log)
+  if (!decision) return null
+  const list = Array.isArray(steps) ? steps : []
+  const byId = new Map(list.map((s) => [String(s.id), s]))
+  const children = new Map()
+  for (const s of list) {
+    if (s?.parent_span_id == null) continue
+    const pid = String(s.parent_span_id)
+    if (!children.has(pid)) children.set(pid, [])
+    children.get(pid).push(String(s.id))
+  }
+  const start = String(log.id)
+  const q = [...(children.get(start) || [])]
+  const seen = new Set()
+  const descendants = []
+  while (q.length) {
+    const cur = q.shift()
+    if (seen.has(cur)) continue
+    seen.add(cur)
+    const row = byId.get(cur)
+    if (!row) continue
+    descendants.push(row)
+    for (const nxt of children.get(cur) || []) {
+      if (!seen.has(nxt)) q.push(nxt)
+    }
+  }
+  const observed = new Set()
+  const observedCanonical = new Set()
+  const observedFallback = new Set()
+  for (const d of descendants) {
+    const o = observedDecisionIdentifiers(d)
+    for (const id of o.ids) observed.add(id)
+    for (const id of o.canonical) observedCanonical.add(id)
+    for (const id of o.fallback) observedFallback.add(id)
+  }
+  const skipped = (decision.available || []).filter((x) => !(decision.chosen || []).includes(x))
+  const missing = (decision.expected_downstream || []).filter((x) => !observed.has(x))
+  const usedModes = new Set()
+  for (const x of decision.expected_downstream || []) {
+    if (observedCanonical.has(x)) usedModes.add('canonical')
+    else if (observedFallback.has(x)) usedModes.add('fallback')
+  }
+  const matching_mode = usedModes.size > 1 ? 'mixed' : (usedModes.size === 1 ? [...usedModes][0] : (observedFallback.size ? 'fallback' : 'canonical'))
+  const computedImpact = {
+    descendant_span_count: descendants.length,
+    latency_ms: descendants.reduce((a, s) => a + (Number(s.latency_ms) || 0), 0),
+    cost_usd: descendants.reduce((a, s) => a + (Number(s.cost_usd) || 0), 0),
+    input_tokens: descendants.reduce((a, s) => a + (Number(s.input_tokens) || 0), 0),
+    output_tokens: descendants.reduce((a, s) => a + (Number(s.output_tokens) || 0), 0),
+    error_count: descendants.reduce((a, s) => a + (s.error ? 1 : 0), 0),
+  }
+  return {
+    ...decision,
+    skipped,
+    missing_expected: missing,
+    observed_identifiers: [...observed].sort(),
+    matching_mode,
+    impact: { reported: decision.impact || {}, computed: computedImpact },
+  }
+}
+
+export function aggregateDecisionForRun(steps) {
+  const list = Array.isArray(steps) ? steps : []
+  const decisionSteps = list.filter((s) => decisionBlockFromMetadata(s))
+  if (!decisionSteps.length) return null
+
+  const displayDecisionId = (x) => String(x || '').replace(/^route:route:/, 'route:')
+  const firstTs = decisionSteps
+    .map((s) => parseStepTimestampMs(s.timestamp))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b)
+  const firstTimestamp = firstTs.length ? new Date(firstTs[0]).toISOString() : null
+  const lastTimestamp = firstTs.length ? new Date(firstTs[firstTs.length - 1]).toISOString() : null
+
+  const types = new Set()
+  const emitters = new Set()
+  const chosen = new Set()
+  const skipped = new Set()
+  const expectedDownstream = new Set()
+  const chronology = []
+  const runStartCandidates = []
+
+  for (const s of list) {
+    const md = metadataObject(s)
+    const startedAt = Date.parse(String(md.started_at || ''))
+    if (Number.isFinite(startedAt)) runStartCandidates.push(startedAt)
+    const endAt = parseStepTimestampMs(s.timestamp)
+    const lat = Number(s.latency_ms || 0)
+    if (Number.isFinite(endAt) && Number.isFinite(lat)) {
+      runStartCandidates.push(Math.max(0, Math.round(endAt - lat)))
+    }
+  }
+  const runStartMs = runStartCandidates.length ? Math.min(...runStartCandidates) : null
+
+  for (const s of decisionSteps) {
+    const md = metadataObject(s)
+    const d = decisionBlockFromMetadata(s)
+    if (!d) continue
+    if (d.type) types.add(d.type)
+    // Emitter = source node/span that emitted the decision event, not the chosen route target.
+    const emitter = String(md.agent_name || md.agent_span_name || s.span_name || 'unknown').trim()
+    emitters.add(displayDecisionId(emitter))
+    const chosenList = (d.chosen || []).map(displayDecisionId)
+    for (const x of chosenList) chosen.add(x)
+    for (const x of (d.available || []).filter((x) => !(d.chosen || []).includes(x))) skipped.add(displayDecisionId(x))
+    for (const x of d.expected_downstream || []) expectedDownstream.add(displayDecisionId(x))
+    chronology.push({
+      id: s.id,
+      timestamp: s.timestamp || null,
+      emitter: displayDecisionId(emitter),
+      type: d.type || 'decision',
+      chosen: chosenList,
+      offset_ms: (() => {
+        const ts = Date.parse(String(s.timestamp || ''))
+        if (!Number.isFinite(ts) || !Number.isFinite(runStartMs)) return null
+        return Math.max(0, Math.round(ts - runStartMs))
+      })(),
+    })
+  }
+
+  // Downstream should stay routing-specific. If expected_downstream is absent,
+  // fall back to chosen routing/tool targets only (not all observed span identifiers).
+  const downstream = expectedDownstream.size ? [...expectedDownstream] : [...chosen]
+
+  chronology.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')))
+  return {
+    stepCount: decisionSteps.length,
+    primaryStepId: decisionSteps[0]?.id ?? null,
+    types: [...types],
+    emitters: [...emitters],
+    chosen: [...chosen],
+    skipped: [...skipped],
+    downstream,
+    chronology,
+    firstTimestamp,
+    lastTimestamp,
+    runStartMs,
+  }
+}
+
 function _resolvedAgentNameFromOpts(log, opts) {
   const byId = opts?.resolvedAgentById
   if (!byId || log?.id == null) return ''
@@ -430,6 +653,20 @@ export function spanTypeAccent(log) {
 export function stepsWithDepth(steps) {
   if (!steps?.length) return []
   const byId = Object.fromEntries(steps.map(s => [s.id, s]))
+  const stepStartMs = (s) => {
+    const md = metadataObject(s)
+    const startedAt = Date.parse(String(md.started_at || ''))
+    if (Number.isFinite(startedAt)) return startedAt
+    const endedAt = Date.parse(String(md.ended_at || ''))
+    if (Number.isFinite(endedAt)) {
+      const lat = Number(s?.latency_ms || 0)
+      if (Number.isFinite(lat)) return Math.max(0, Math.round(endedAt - lat))
+      return endedAt
+    }
+    const ts = Date.parse(String(s?.timestamp || ''))
+    if (Number.isFinite(ts)) return ts
+    return Number.POSITIVE_INFINITY
+  }
   function depth(s) {
     let d = 0
     let cur = s
@@ -444,7 +681,15 @@ export function stepsWithDepth(steps) {
     return d
   }
   return [...steps]
-    .sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')))
+    .sort((a, b) => {
+      const da = stepStartMs(a)
+      const db = stepStartMs(b)
+      if (da !== db) return da - db
+      const ta = Date.parse(String(a?.timestamp || ''))
+      const tb = Date.parse(String(b?.timestamp || ''))
+      if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb
+      return (Number(a?.id) || 0) - (Number(b?.id) || 0)
+    })
     .map(s => ({ ...s, _depth: depth(s) }))
 }
 

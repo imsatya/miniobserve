@@ -117,6 +117,18 @@ def _apply_llm_result(span: "Span", result: dict[str, Any]) -> None:
         )
 
 
+def _json_safe_object(raw: Any) -> Optional[dict]:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    try:
+        json.dumps(raw, default=str)
+        return raw
+    except Exception:
+        return {str(k): str(v) for k, v in raw.items()}
+
+
 @dataclass
 class Span:
     span_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
@@ -152,6 +164,7 @@ class Span:
 
     error: Optional[str] = None
     objective_met: bool = False
+    extra_metadata: Optional[dict] = None
 
     def finish(self) -> None:
         self.end_time = time.time()
@@ -292,6 +305,12 @@ class Tracer:
             an = str(s.agent_name).strip()
             if an:
                 meta["agent_name"] = an[:128]
+        extra = _json_safe_object(s.extra_metadata)
+        if extra:
+            for k, v in extra.items():
+                if k in ("agent_span_name", "span_type"):
+                    continue
+                meta[k] = v
         # AGENTS.md: optional ISO bounds for timelines (latency_ms remains client wall duration).
         try:
             meta["started_at"] = _iso_utc(float(s.start_time))
@@ -438,6 +457,7 @@ class Tracer:
         fn: Callable[[], dict[str, Any]],
         trace_lane: Optional[str] = None,
         agent_name: Optional[str] = None,
+        extra_metadata: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """
         One LLM call inside an ``llm`` span: set model/provider/fingerprint/request, run ``fn``,
@@ -447,6 +467,8 @@ class Tracer:
         Optional ``trace_lane`` is copied into ``metadata.trace_lane`` for dashboard trace labels.
         Optional ``agent_name`` is copied into ``metadata.agent_name`` (e.g. LangGraph supervisor
         vs subagent); see AGENTS.md.
+        Optional ``extra_metadata`` is merged into span metadata (e.g. ``decision`` block,
+        canonical ``workflow_node`` / ``route_id`` IDs for deterministic path checks).
         """
         with self.span("llm", name, parent_id=parent_id) as s:
             s.model = model
@@ -456,6 +478,8 @@ class Tracer:
                 s.trace_lane = str(trace_lane).strip() or None
             if agent_name is not None:
                 s.agent_name = str(agent_name).strip() or None
+            if extra_metadata is not None:
+                s.extra_metadata = _json_safe_object(extra_metadata) or None
             s.prompt_fingerprint = s.fingerprint_prompt(messages)
             system_prompt = next((m.get("content") for m in messages if m.get("role") == "system"), "")
             s.system_prompt_preview = str(system_prompt or "")[:500]
@@ -474,6 +498,7 @@ class Tracer:
         tool_args: dict[str, Any],
         fn: Callable[[], str],
         agent_name: Optional[str] = None,
+        extra_metadata: Optional[dict[str, Any]] = None,
     ) -> Tuple[str, str]:
         """
         One tool call inside a ``tool`` span. ``fn`` should execute the tool and return the string
@@ -481,12 +506,16 @@ class Tracer:
         via ``prev_tool_span_id``.
 
         Optional ``agent_name`` is copied into ``metadata.agent_name`` for UI grouping.
+        Optional ``extra_metadata`` is merged into span metadata (e.g. ``decision`` block,
+        canonical ``workflow_node`` / ``route_id`` IDs for deterministic path checks).
         """
         with self.span("tool", name, parent_id=parent_id) as s:
             s.tool_name = tool_name
             s.tool_args = tool_args
             if agent_name is not None:
                 s.agent_name = str(agent_name).strip() or None
+            if extra_metadata is not None:
+                s.extra_metadata = _json_safe_object(extra_metadata) or None
             out = fn()
             s.tool_result = out
             return out, s.span_id

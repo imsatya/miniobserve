@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 # Behavioral phases (framework-agnostic):
@@ -83,6 +84,31 @@ def _parse_metadata(raw: Any) -> dict:
         except Exception:
             return {}
     return {}
+
+
+def _parse_iso_ms(raw: Any) -> float | None:
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000.0
+    except Exception:
+        return None
+
+
+def _event_start_sort_key(row: dict) -> tuple[float, int]:
+    md = _parse_metadata(row.get("metadata"))
+    started_ms = _parse_iso_ms(md.get("started_at"))
+    if started_ms is not None:
+        return (started_ms, int(row.get("id") or 0))
+    ended_ms = _parse_iso_ms(md.get("ended_at"))
+    if ended_ms is not None:
+        lat = float(row.get("latency_ms") or 0)
+        return (ended_ms - max(0.0, lat), int(row.get("id") or 0))
+    ts_ms = _parse_iso_ms(row.get("timestamp"))
+    if ts_ms is not None:
+        return (ts_ms, int(row.get("id") or 0))
+    return (float("inf"), int(row.get("id") or 0))
 
 
 def is_tool_span(row: dict) -> bool:
@@ -317,7 +343,7 @@ def compute_cognitive_for_run(
     if not rows:
         return empty
 
-    rows.sort(key=lambda x: (str(x.get("timestamp") or ""), int(x.get("id") or 0)))
+    rows.sort(key=_event_start_sort_key)
 
     fp_groups: Dict[str, List[dict]] = defaultdict(list)
     for r in rows:
@@ -331,7 +357,7 @@ def compute_cognitive_for_run(
     for fp, group in fp_groups.items():
         if len(group) < STUCK_REPEAT_THRESHOLD:
             continue
-        group.sort(key=lambda x: (str(x.get("timestamp") or ""), int(x.get("id") or 0)))
+        group.sort(key=_event_start_sort_key)
         for g in group:
             stuck_ids.add(int(g["id"]))
         costs = [float(g.get("cost_usd") or 0) for g in group]

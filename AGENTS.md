@@ -98,6 +98,132 @@ MiniObserve stores one row per span; it does **not** run inside your process to 
 | Span type column | **`span_type`** (top-level on each log) | Client / **Tracer** | Ingest copies **`metadata.span_type`** into the **`span_type` column** when the top-level field is omitted (Python **`Tracer`** batch shape). Prefer sending top-level **`span_type`** for the clearest dashboard colors and cognitive classification. |
 | Human step title (UI) | **`metadata.agent_span_name`**, LLM **`prompt` JSON `step`** | Python **`Tracer`** (and compatible HTTP) | The OSS dashboard uses these for the **main activity step label** before assistant **`response`** snippets. Tracer intentionally uses generic top-level **`span_name`** values (`llm_call`, `tool_call`, `router`); meaningful names live in **metadata** and **`prompt`** JSON—see [`Tracer._span_to_log_body`](sdk/miniobserve/tracer.py). |
 
+### Deterministic decision metadata (optional)
+
+To expose chosen/skipped/missing paths without extra model calls, emit a namespaced block:
+
+```json
+{
+  "metadata": {
+    "decision": {
+      "type": "workflow_routing",
+      "chosen": ["route:billing"],
+      "available": ["route:billing", "route:security"],
+      "selection_signals": {"priority": "speed"},
+      "expected_downstream": ["tool:refund_policy", "tool:security_escalation"],
+      "impact": {"status": "ok"}
+    }
+  }
+}
+```
+
+MiniObserve computes deterministic fields from stored spans:
+- `skipped = available - chosen`
+- `missing_expected = expected_downstream - observed_descendants`
+- downstream rollups: latency/tokens/cost/errors over descendants.
+
+ID conventions for reliable matching: `tool:<name>`, `route:<name>`, `agent:<name>`, `workflow:<name>`.
+
+### Decision observability: required wiring (read carefully)
+
+MiniObserve computes `missing_expected` from the stored span tree.  
+If you only set custom metadata keys (for example `metadata.miniobserve_client_span_id`) and do not set linkage fields, checks will be wrong.
+
+**Required on payload rows:**
+- `client_span_id`
+- `parent_client_span_id` (for children)
+
+**Required for decision semantics:**
+- `metadata.decision` with `type`, `chosen`; optional `available`, `expected_downstream`, `selection_signals`, `impact`
+- Canonical orchestration IDs on route/workflow spans:
+  - preferred: `metadata.workflow_node` (example: `route:final`)
+  - optional alias: `metadata.route_id` (normalized to `route:<value>`)
+
+**Important semantics:**
+- Emit decision metadata on the span that actually makes the decision (router/tool-select step).
+- If you emit a pre-run heuristic/intent checkpoint, mark `metadata.decision.stage = "pre"`.
+- Keep decision-span `prompt` minimal (`"route_decision"`). Do not add extra LLM calls just to generate decision text.
+
+#### Good (HTTP shape)
+
+```json
+{
+  "run_id": "r1",
+  "span_type": "llm",
+  "span_name": "router_decision",
+  "prompt": "route_decision",
+  "response": "",
+  "client_span_id": "decision-1",
+  "metadata": {
+    "decision": {
+      "type": "workflow_routing",
+      "chosen": ["route:math"],
+      "available": ["route:math", "route:research"],
+      "expected_downstream": ["tool:add"],
+      "selection_signals": {"detected_math": true}
+    }
+  }
+}
+```
+
+```json
+{
+  "run_id": "r1",
+  "span_type": "llm",
+  "span_name": "llm_call",
+  "client_span_id": "node-final-1",
+  "parent_client_span_id": "decision-1",
+  "metadata": { "workflow_node": "route:final" }
+}
+```
+
+```json
+{
+  "run_id": "r1",
+  "span_type": "tool",
+  "span_name": "tool_call",
+  "prompt": "{\"tool\":\"add\",\"args\":{\"a\":13,\"b\":14}}",
+  "response": "27",
+  "client_span_id": "tool-add-1",
+  "parent_client_span_id": "decision-1",
+  "metadata": { "tool_name": "add" }
+}
+```
+
+#### Bad (common mistake)
+
+```json
+{
+  "metadata": {
+    "miniobserve_client_span_id": "decision-1"
+  }
+}
+```
+
+This is metadata only; it does **not** create lineage.
+
+#### Good (Tracer helper style)
+
+```python
+tracer.run_tool(
+    name="tool-step",
+    parent_id=parent_span_id,
+    tool_name="add",
+    tool_args={"a": 13, "b": 14},
+    fn=lambda: "27",
+    extra_metadata={
+        "decision": {
+            "type": "tool_select",
+            "chosen": ["tool:add"],
+            "available": ["tool:add", "tool:search"],
+            "expected_downstream": ["tool:add"],
+        }
+    },
+)
+```
+
+This adds observability rows only (no extra model inference cost).
+
 OpenAPI **`/docs`** on the running server includes a short summary of this contract in the app **description** ([`backend/main.py`](backend/main.py)).
 
 ### Keep tool log payloads small

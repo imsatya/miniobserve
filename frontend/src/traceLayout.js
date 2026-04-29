@@ -131,6 +131,21 @@ function firstLineText(s) {
   return t.split('\n').map((l) => l.trim()).find(Boolean) || ''
 }
 
+function eventStartMs(step) {
+  const md = metadataObject(step)
+  const started = Date.parse(String(md.started_at || ''))
+  if (Number.isFinite(started)) return started
+  const ended = Date.parse(String(md.ended_at || ''))
+  if (Number.isFinite(ended)) {
+    const lat = Number(step?.latency_ms || 0)
+    if (Number.isFinite(lat)) return Math.max(0, Math.round(ended - lat))
+    return ended
+  }
+  const ts = Date.parse(String(step?.timestamp || ''))
+  if (Number.isFinite(ts)) return ts
+  return Number.POSITIVE_INFINITY
+}
+
 /**
  * First routing line from supervisor text: match against ``routeAgents`` (substring, longest first).
  * Returns ``end`` for finish tokens, else the matched agent key or ``''``.
@@ -173,8 +188,12 @@ export function buildAgentTraceLayout(steps) {
   if (!steps?.length) return empty
 
   const ordered = [...steps].sort((a, b) => {
-    const c = String(a.timestamp || '').localeCompare(String(b.timestamp || ''))
-    if (c !== 0) return c
+    const sa = eventStartMs(a)
+    const sb = eventStartMs(b)
+    if (sa !== sb) return sa - sb
+    const ta = Date.parse(String(a.timestamp || ''))
+    const tb = Date.parse(String(b.timestamp || ''))
+    if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb
     return (Number(a.id) || 0) - (Number(b.id) || 0)
   })
 

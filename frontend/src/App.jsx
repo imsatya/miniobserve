@@ -305,7 +305,7 @@ export default function App() {
     )
   }
 
-  const openLog = async (id, { runKey, steps, siblings, returnTo } = {}) => {
+  const openLog = async (id, { runKey, steps, siblings, returnTo, modalMode, decisionAggregate } = {}) => {
     try {
       const log = await fetchLog(id)
       let runSteps = steps
@@ -313,7 +313,15 @@ export default function App() {
         const d = await fetchRunDetail(runKey)
         runSteps = d.steps || []
       }
-      setSelectedLog({ log, runSteps: runSteps || null, runKey: runKey || null, siblings: siblings || null, returnTo: returnTo || null })
+      setSelectedLog({
+        log,
+        runSteps: runSteps || null,
+        runKey: runKey || null,
+        siblings: siblings || null,
+        returnTo: returnTo || null,
+        modalMode: modalMode || null,
+        decisionAggregate: decisionAggregate || null,
+      })
     } catch (err) {
       if (err.message === 'UNAUTHORIZED') setUnauthorized(true)
     }
@@ -788,24 +796,28 @@ export default function App() {
 
       {selectedLog && (() => {
         // Build ordered sibling id list: run steps take priority (Trace tab), else Logs tab page.
-        const siblingIds = selectedLog.runSteps?.length
-          ? selectedLog.runSteps.map(s => s.id)
-          : (selectedLog.siblings || null)
-        const curIdx = siblingIds ? siblingIds.indexOf(selectedLog.log.id) : -1
+        const siblingIds = selectedLog.siblings?.length
+          ? selectedLog.siblings
+          : (selectedLog.runSteps?.length ? selectedLog.runSteps.map(s => s.id) : null)
+        const normalizedSiblingIds = siblingIds ? siblingIds.map((id) => String(id)) : null
+        const curIdx = normalizedSiblingIds ? normalizedSiblingIds.indexOf(String(selectedLog.log.id)) : -1
         const prevId = curIdx > 0 ? siblingIds[curIdx - 1] : null
         const nextId = curIdx >= 0 && curIdx < siblingIds.length - 1 ? siblingIds[curIdx + 1] : null
         const navOpts = { runKey: selectedLog.runKey, steps: selectedLog.runSteps, siblings: selectedLog.siblings }
+        const disableNav = selectedLog.modalMode === 'decision-aggregate'
         return (
           <LogModal
             log={selectedLog.log}
+            modalMode={selectedLog.modalMode}
+            decisionAggregate={selectedLog.decisionAggregate}
             runContext={
               selectedLog.runSteps?.length
-                ? { steps: selectedLog.runSteps, runKey: selectedLog.runKey }
+                ? { steps: selectedLog.runSteps, runKey: selectedLog.runKey, siblings: selectedLog.siblings }
                 : null
             }
             onClose={() => { const ret = selectedLog.returnTo; setSelectedLog(null); ret?.() }}
-            onPrev={prevId != null ? () => openLog(prevId, navOpts) : null}
-            onNext={nextId != null ? () => openLog(nextId, navOpts) : null}
+            onPrev={!disableNav && prevId != null ? () => openLog(prevId, navOpts) : null}
+            onNext={!disableNav && nextId != null ? () => openLog(nextId, navOpts) : null}
           />
         )
       })()}

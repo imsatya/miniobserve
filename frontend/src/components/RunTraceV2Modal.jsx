@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { fetchRunDetail } from '../api.js'
-import { stepsToGanttSegments } from '../runUi.js'
+import { stepsToGanttSegments, metadataObject } from '../runUi.js'
 import RunTraceV2 from './RunTraceV2.jsx'
 
 export default function RunTraceV2Modal({ runKey, onClose, onOpenLog }) {
@@ -39,19 +39,23 @@ export default function RunTraceV2Modal({ runKey, onClose, onOpenLog }) {
     if (!detail?.steps?.length) {
       return { rangeMs: 1, totalTokens: 0, spanCount: 0, anyError: false, steps: [] }
     }
-    const { rangeMs: rm } = stepsToGanttSegments(detail.steps)
+    const executionSteps = detail.steps.filter((s) => {
+      const md = metadataObject(s)
+      return !(md?.decision && typeof md.decision === 'object')
+    })
+    const { rangeMs: rm } = stepsToGanttSegments(executionSteps)
     let tok = 0
     let err = false
-    for (const s of detail.steps) {
+    for (const s of executionSteps) {
       tok += Number(s.input_tokens || 0) + Number(s.output_tokens || 0)
       if (s.error) err = true
     }
     return {
       rangeMs: Math.max(rm, 1),
       totalTokens: tok,
-      spanCount: detail.steps.length,
+      spanCount: executionSteps.length,
       anyError: err,
-      steps: detail.steps,
+      steps: executionSteps,
     }
   }, [detail])
 

@@ -205,7 +205,7 @@ function LogBodySection({ label, text, onCopyDisplayed, copied }) {
   )
 }
 
-export default function LogModal({ log, runContext, onClose, onPrev, onNext }) {
+export default function LogModal({ log, runContext, onClose, onPrev, onNext, modalMode, decisionAggregate }) {
   const [copied, setCopied] = useState(null)
   const [expanded, setExpanded] = useState(false)
   const panelRef = useRef(null)
@@ -263,6 +263,8 @@ export default function LogModal({ log, runContext, onClose, onPrev, onNext }) {
   const tracerStepSummary =
     typeof log.prompt === 'string' && isTracerStepSummaryPrompt(log.prompt)
   const metaKeys = Object.keys(metadata).filter(k => k !== 'system_prompt_preview')
+  const executionStartedAt = metadata.started_at || null
+  const executionEndedAt = metadata.ended_at || null
   /** API may return `response` as string or parsed JSON (array / object). */
   const responseText =
     log.response == null || log.response === ''
@@ -278,12 +280,39 @@ export default function LogModal({ log, runContext, onClose, onPrev, onNext }) {
           })()
   const toolCallsSummary = parseOpenAIToolCallsSummary(log.response)
 
+  const runActivitySteps = Array.isArray(runContext?.steps)
+    ? runContext.steps.filter((s) => !isSessionEnvelopeSpan(s))
+    : null
+  const orderedSiblings = Array.isArray(runContext?.siblings) && runContext.siblings.length
+    ? runContext.siblings.map((id) => String(id))
+    : null
+
   const cacheBoundaryPair =
     runContext?.steps?.length && log?.id != null
       ? findAdjacentHitToMissPair(runContext.steps, log.id)
       : null
+  const stepIndexInRun = (() => {
+    if (log?.id == null) return -1
+    if (orderedSiblings?.length) return orderedSiblings.findIndex((id) => id === String(log.id))
+    if (runActivitySteps?.length) return runActivitySteps.findIndex((s) => String(s.id) === String(log.id))
+    return -1
+  })()
+  const stepNumber = stepIndexInRun >= 0 ? stepIndexInRun + 1 : null
+  const isDecisionAggregateMode = modalMode === 'decision-aggregate' && !!decisionAggregate
+  const formatTimeWithMs = (ts) => {
+    const d = new Date(String(ts || ''))
+    if (Number.isNaN(d.getTime())) return '—'
+    return d.toLocaleTimeString([], { hour12: true, hour: 'numeric', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })
+  }
+  const decisionChronologyRows = (() => {
+    const rows = Array.isArray(decisionAggregate?.chronology) ? decisionAggregate.chronology : []
+    if (!rows.length) return []
+    return rows.map((c) => ({ ...c, offsetMs: Number.isFinite(Number(c?.offset_ms)) ? Number(c.offset_ms) : null }))
+  })()
 
   const metricItems = [
+    ...(stepNumber != null ? [{ label: 'Step', value: `#${stepNumber}` }] : []),
+    { label: 'log_id', value: String(log.id) },
     { label: 'Model', value: log.model },
     { label: 'Latency', value: `${log.latency_ms?.toFixed(0)}ms` },
     { label: 'Cost', value: `$${log.cost_usd?.toFixed(6)}` },
@@ -346,7 +375,9 @@ export default function LogModal({ log, runContext, onClose, onPrev, onNext }) {
         <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-line shrink-0">
           <div className="flex items-center gap-3 flex-wrap min-w-0">
             <span id="log-modal-title" className="font-mono text-sm text-ink">
-              #{log.id}
+              {isDecisionAggregateMode
+                ? 'Decision summary'
+                : (stepNumber != null ? `Step #${stepNumber} ID #${log.id}` : `ID #${log.id}`)}
             </span>
             <Badge color={log.error ? 'red' : 'green'}>{log.error ? 'error' : 'ok'}</Badge>
             {log.provider && !['tool', 'agent'].includes(String(log.provider).toLowerCase()) && (
@@ -437,41 +468,65 @@ export default function LogModal({ log, runContext, onClose, onPrev, onNext }) {
 
         <div className="p-4 sm:p-5 flex flex-col gap-4 overflow-y-auto overflow-x-hidden flex-1 min-h-0 overscroll-contain">
           {/* ── Prompt + Response first — most important content ── */}
-          <div className="flex flex-col lg:grid lg:grid-cols-2 lg:gap-4 lg:items-stretch gap-4 min-h-0 shrink-0">
-            {(() => {
-              // Priority: structured messages > synthesise from system_prompt_preview + plain prompt
-              // (do not treat Tracer step-summary JSON in ``prompt`` as chat — use messages / metadata only.)
-              const fromApi = normalizedChatMessages(log)
-              const msgs = fromApi
-                ? fromApi
-                : systemPromptPreview
-                  ? [
-                      { role: 'system', content: systemPromptPreview },
-                      ...(log.prompt && !tracerStepSummary ? [{ role: 'user', content: log.prompt }] : []),
-                    ]
-                  : null
-              return msgs ? (
-                <MessagesSection
-                  messages={msgs}
-                  onCopy={(t) => copy(t, 'prompt')}
-                  copied={copied === 'prompt'}
-                />
-              ) : (
+          {isDecisionAggregateMode ? (
+            <div className="rounded-lg border border-line overflow-hidden text-xs font-mono bg-surface">
+              <div className="px-4 py-3 border-b border-line bg-inset/50">
+                <div className="text-ink">{decisionAggregate.types?.join(', ') || 'decision'}</div>
+                <div className="text-muted mt-1 break-words [overflow-wrap:anywhere]">
+                  emitted by: {decisionAggregate.emitters?.length ? decisionAggregate.emitters.join(', ') : 'unknown'}
+                </div>
+              </div>
+              <div className="px-4 py-3 bg-surface">
+                <div className="text-muted mb-2 uppercase tracking-wide">What happened</div>
+                <div className="space-y-1 text-ink">
+                  {decisionChronologyRows.map((c, i) => (
+                    <div key={`chron-${c.id}-${i}`} className="break-words [overflow-wrap:anywhere]">
+                      {i + 1}. {formatTimeWithMs(c.timestamp)} {c.offsetMs != null ? `(@${c.offsetMs}ms)` : ''} {' -> '} {(c.chosen || []).join(', ') || c.type}
+                    </div>
+                  ))}
+                  {!decisionChronologyRows.length && <div>—</div>}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="shrink-0">
+              <div className="flex flex-col lg:grid lg:grid-cols-2 lg:gap-4 lg:items-stretch gap-4 min-h-0 shrink-0">
+                {(() => {
+                  // Priority: structured messages > synthesise from system_prompt_preview + plain prompt
+                  // (do not treat Tracer step-summary JSON in ``prompt`` as chat — use messages / metadata only.)
+                  const fromApi = normalizedChatMessages(log)
+                  const msgs = fromApi
+                    ? fromApi
+                    : systemPromptPreview
+                      ? [
+                          { role: 'system', content: systemPromptPreview },
+                          ...(log.prompt && !tracerStepSummary ? [{ role: 'user', content: log.prompt }] : []),
+                        ]
+                      : null
+                  return msgs ? (
+                    <MessagesSection
+                      messages={msgs}
+                      onCopy={(t) => copy(t, 'prompt')}
+                      copied={copied === 'prompt'}
+                    />
+                  ) : (
+                    <LogBodySection
+                      label={tracerStepSummary ? 'Step metadata' : 'Prompt'}
+                      text={log.prompt}
+                      onCopyDisplayed={(t) => copy(t, 'prompt')}
+                      copied={copied === 'prompt'}
+                    />
+                  )
+                })()}
                 <LogBodySection
-                  label={tracerStepSummary ? 'Step metadata' : 'Prompt'}
-                  text={log.prompt}
-                  onCopyDisplayed={(t) => copy(t, 'prompt')}
-                  copied={copied === 'prompt'}
+                  label="Response"
+                  text={responseText}
+                  onCopyDisplayed={(t) => copy(t, 'response')}
+                  copied={copied === 'response'}
                 />
-              )
-            })()}
-            <LogBodySection
-              label="Response"
-              text={responseText}
-              onCopyDisplayed={(t) => copy(t, 'response')}
-              copied={copied === 'response'}
-            />
-          </div>
+              </div>
+            </div>
+          )}
 
           {log.error && (
             <div>
@@ -502,14 +557,14 @@ export default function LogModal({ log, runContext, onClose, onPrev, onNext }) {
             </div>
           )}
 
-          <StepPromptCaching log={log} />
+          {!isDecisionAggregateMode && <StepPromptCaching log={log} />}
 
           {cacheBoundaryPair && (
             <StepCacheBoundary hitStep={cacheBoundaryPair.hit} missStep={cacheBoundaryPair.miss} />
           )}
 
           {/* ── Collapsible metrics ── */}
-          <details className="group border border-line rounded-xl bg-inset/50 min-w-0 w-full">
+          {!isDecisionAggregateMode && <details className="group border border-line rounded-xl bg-inset/50 min-w-0 w-full">
             <summary className="flex items-center gap-2 cursor-pointer list-none px-4 py-3 text-muted text-xs font-mono uppercase tracking-widest hover:bg-inset [&::-webkit-details-marker]:hidden">
               <ChevronDown size={14} className="shrink-0 transition-transform group-open:rotate-180" />
               Metrics
@@ -524,14 +579,18 @@ export default function LogModal({ log, runContext, onClose, onPrev, onNext }) {
                 ))}
               </div>
             </div>
-          </details>
+          </details>}
 
-          <div className="text-muted font-mono text-xs" title={log.timestamp ? `Stored: ${log.timestamp}` : undefined}>
-            {formatLocalTimestamp(log.timestamp)}
-          </div>
+          {!isDecisionAggregateMode && <div
+            className="text-muted font-mono text-xs"
+            title={(executionStartedAt || log.timestamp) ? `Execution start: ${executionStartedAt || '—'} | Stored: ${log.timestamp || '—'}` : undefined}
+          >
+            {executionStartedAt ? `Started: ${formatLocalTimestamp(executionStartedAt)}` : formatLocalTimestamp(log.timestamp)}
+            {executionEndedAt ? `  •  Ended: ${formatLocalTimestamp(executionEndedAt)}` : ''}
+          </div>}
 
           {/* ── Collapsible metadata ── */}
-          <details className="group border border-line rounded-xl bg-inset/50 min-w-0 w-full">
+          {!isDecisionAggregateMode && <details className="group border border-line rounded-xl bg-inset/50 min-w-0 w-full">
             <summary className="flex items-center gap-2 cursor-pointer list-none px-4 py-3 text-muted text-xs font-mono uppercase tracking-widest hover:bg-inset [&::-webkit-details-marker]:hidden">
               <ChevronDown size={14} className="shrink-0 transition-transform group-open:rotate-180" />
               Metadata
@@ -556,7 +615,7 @@ export default function LogModal({ log, runContext, onClose, onPrev, onNext }) {
                 </div>
               )}
             </div>
-          </details>
+          </details>}
         </div>
       </div>
     </div>
