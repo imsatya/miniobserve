@@ -530,6 +530,14 @@ class Tracer:
             self._flush_remote_non_blocking()
         tool_spans = [s for s in self.spans if s.span_type == "tool"]
         llm_spans = [s for s in self.spans if s.span_type == "llm"]
+        if (_env_truthy("MINIOBSERVE_TRACER_DIAG") or MINIOBSERVE_DEBUG) and getattr(self, "_langchain_callback_registered", False) and not llm_spans:
+            _debug_print(
+                "[miniobserve] MiniObserveCallbackHandler was registered but captured 0 LLM spans. "
+                "If your graph nodes call the raw OpenAI/Anthropic SDK directly "
+                "(openai.OpenAI(), anthropic.Anthropic()) instead of a LangChain model wrapper "
+                "(ChatOpenAI, ChatAnthropic), callbacks will not fire. "
+                "Switch to a LangChain model wrapper to get per-step traces."
+            )
         if (_env_truthy("MINIOBSERVE_TRACER_DIAG") or MINIOBSERVE_DEBUG) and not tool_spans:
             for s in llm_spans:
                 if s.had_tool_call or (s.tool_call_summary or "").strip():

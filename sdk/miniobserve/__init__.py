@@ -24,4 +24,4 @@ __all__ = [
     "strip_messages_for_log",
     "send_integration_hello",
 ]
-__version__ = "0.1.2"
+__version__ = "0.1.4"

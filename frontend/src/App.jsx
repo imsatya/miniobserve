@@ -371,7 +371,7 @@ export default function App() {
             <Activity size={14} className="text-ink" />
           </div>
           <span className="font-mono font-semibold text-sm tracking-tight">miniobserve</span>
-          <span className="text-muted font-mono text-xs">v0.1.3</span>
+          <span className="text-muted font-mono text-xs">v0.1.4</span>
           <span
             className="text-muted font-mono text-[10px] uppercase tracking-widest border border-line rounded px-2 py-0.5 shrink-0"
             title={serverDatabase && serverDatabase !== '' ? `MINIOBSERVE_BACKEND=${serverDatabase}` : 'Database backend'}

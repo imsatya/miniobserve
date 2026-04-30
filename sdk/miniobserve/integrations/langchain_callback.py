@@ -401,6 +401,7 @@ class MiniObserveCallbackHandler(BaseCallbackHandler):
         super().__init__()
         self._tracer = tracer
         self._root_parent_span_id = root_parent_span_id
+        tracer._langchain_callback_registered = True
         self._lc_run_to_span_id: Dict[str, str] = {}
         self._pending_llm: Dict[str, Tuple[Any, Span]] = {}
         self._pending_tool: Dict[str, Tuple[Any, Span]] = {}
