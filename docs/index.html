@@ -442,6 +442,15 @@
         .shot-grid-2 {
           grid-template-columns: 1fr;
         }
+
+        h1 {
+          font-size: clamp(26px, 7.5vw, 34px);
+          text-wrap: balance;
+        }
+
+        h1 br {
+          display: none;
+        }
       }
     </style>
   </head>
@@ -479,7 +488,10 @@
             </p>
           </div>
           <figure class="panel hero-visual">
-            <img src="./images/mo_trace.png" alt="MiniObserve trace view" />
+            <picture>
+              <source media="(max-width: 920px)" srcset="./images/mo_trace_mobile.png" />
+              <img src="./images/mo_trace.png" alt="MiniObserve trace view" />
+            </picture>
           </figure>
         </div>
       </section>
@@ -545,13 +557,22 @@
           </article>
         </div>
         <figure class="panel section-shot">
-          <img src="./images/mo_timeline.png" alt="MiniObserve timeline view" />
+          <picture>
+            <source media="(max-width: 920px)" srcset="./images/mo_timeline_mobile.png" />
+            <img src="./images/mo_timeline.png" alt="MiniObserve timeline view" />
+          </picture>
         </figure>
         <figure class="panel section-shot">
-          <img src="./images/mo_prompt_review.png" alt="MiniObserve prompt review view" />
+          <picture>
+            <source media="(max-width: 920px)" srcset="./images/mo_prompt_review_mobile.png" />
+            <img src="./images/mo_prompt_review.png" alt="MiniObserve prompt review view" />
+          </picture>
         </figure>
         <figure class="panel section-shot" style="margin-top: 0;">
-          <img src="./images/mo_prompt-caching.png" alt="MiniObserve prompt caching insights" />
+          <picture>
+            <source media="(max-width: 920px)" srcset="./images/mo_prompt-caching_mobile.png" />
+            <img src="./images/mo_prompt-caching.png" alt="MiniObserve prompt caching insights" />
+          </picture>
         </figure>
       
       </section>
